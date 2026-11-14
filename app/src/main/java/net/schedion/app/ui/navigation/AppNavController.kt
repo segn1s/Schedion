@@ -12,13 +12,16 @@ import androidx.compose.runtime.remember
  * и декларативно описывается в [AppNavGraph].
  */
 @Stable
-class AppNavController(initialScreen: Screen) {
+internal class AppNavController(initialScreen: Screen) {
 
     private val backStack = mutableStateListOf(initialScreen)
 
     /** Экран, который отображается сейчас. */
     val currentScreen: Screen
         get() = backStack.last()
+
+    val previousScreen: Screen?
+        get() = backStack.getOrNull(backStack.lastIndex - 1)
 
     /** true, если из текущего экрана можно вернуться назад. */
     val canNavigateBack: Boolean
@@ -29,6 +32,13 @@ class AppNavController(initialScreen: Screen) {
         if (screen != currentScreen) backStack.add(screen)
     }
 
+    /** Меняет основной экран без накопления истории вкладок и состояний расписания. */
+    fun openRoot(screen: Screen) {
+        if (screen == currentScreen && !canNavigateBack) return
+        backStack.clear()
+        backStack.add(screen)
+    }
+
     /** Возвращает на предыдущий экран; на корневом экране ничего не делает. */
     fun navigateBack() {
         if (canNavigateBack) backStack.removeAt(backStack.lastIndex)
@@ -37,5 +47,5 @@ class AppNavController(initialScreen: Screen) {
 
 /** Создаёт и запоминает [AppNavController] на время жизни композиции. */
 @Composable
-fun rememberAppNavController(initialScreen: Screen = Screen.Home): AppNavController =
+internal fun rememberAppNavController(initialScreen: Screen = Screen.Onboarding): AppNavController =
     remember { AppNavController(initialScreen) }
