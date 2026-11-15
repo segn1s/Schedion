@@ -25,9 +25,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -196,16 +206,21 @@ internal fun Chip(
 
 @Composable
 internal fun SearchField(
-    text: String,
+    value: String,
+    onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
-    focused: Boolean = false,
-    placeholder: Boolean = true,
+    placeholder: String = "Поиск…",
+    onSearch: (() -> Unit)? = null,
 ) {
+    var isFocused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(D.ControlRadius)
+
     Row(
-        modifier.fillMaxWidth().height(if (focused) D.SearchField else D.SheetSearchField)
+        modifier = modifier
+            .fillMaxWidth()
+            .height(if (isFocused) D.SearchField else D.SheetSearchField)
             .then(
-                if (!focused) Modifier else Modifier.drawBehind {
+                if (!isFocused) Modifier else Modifier.drawBehind {
                     val halo = D.Tiny.toPx()
                     drawRoundRect(
                         C.FocusRing.copy(alpha = .45f),
@@ -215,14 +230,44 @@ internal fun SearchField(
                     )
                 },
             )
-            .background(if (focused) C.Sheet else C.Past, shape)
-            .border(if (focused) D.ThickOutline else D.Hairline, if (focused) C.FocusRing else C.Outline, shape)
+            .background(if (isFocused) C.Sheet else C.Past, shape)
+            .border(
+                if (isFocused) D.ThickOutline else D.Hairline,
+                if (isFocused) C.FocusRing else C.Outline,
+                shape,
+            )
             .padding(horizontal = D.Page),
         horizontalArrangement = Arrangement.spacedBy(D.Ml),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LineIcon(Glyph.Search, size = D.Icon, tint = C.Muted)
-        Text(text, color = if (placeholder) C.Muted else C.Text, style = T.Search)
+        LineIcon(Glyph.Search, size = D.Icon, tint = if (isFocused) C.Primary else C.Muted)
+        Box(Modifier.weight(1f)) {
+            if (value.isEmpty()) {
+                Text(placeholder, color = C.Muted, style = T.Search)
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { isFocused = it.isFocused },
+                textStyle = T.Search.copy(color = C.Text),
+                cursorBrush = SolidColor(C.Primary),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSearch?.invoke() }),
+            )
+        }
+        if (value.isNotEmpty()) {
+            Box(
+                Modifier
+                    .size(D.Icon)
+                    .clickable(role = Role.Button) { onValueChange("") },
+                contentAlignment = Alignment.Center,
+            ) {
+                LineIcon(Glyph.Remove, size = D.IconSmall, tint = C.Muted)
+            }
+        }
     }
 }
 

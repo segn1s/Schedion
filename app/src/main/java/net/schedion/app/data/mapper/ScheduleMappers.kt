@@ -51,9 +51,7 @@ fun ScheduleLessonDto.toDomain(
     pairNumber = pair,
     timeStart = timeStart,
     timeEnd = timeEnd,
-    kind = kind.toReadableString().let { k ->
-        if (subgroup != null && k.isNotEmpty()) "$k · подгр. $subgroup" else k
-    },
+    kind = kind.toReadableString(),
     discipline = discipline,
     room = room,
     subgroup = subgroup,
@@ -75,7 +73,7 @@ fun LessonEntity.toDomain(
     pairNumber = pairNumber,
     timeStart = timeStart,
     timeEnd = timeEnd,
-    kind = if (subgroup != null && kind.isNotEmpty()) "$kind · подгр. $subgroup" else kind,
+    kind = kind,
     discipline = discipline,
     room = room,
     subgroup = subgroup,

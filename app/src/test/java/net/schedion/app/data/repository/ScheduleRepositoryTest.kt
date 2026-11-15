@@ -128,7 +128,10 @@ class ScheduleRepositoryTest {
         }
 
         override suspend fun getHome(): HomeContentDto = throw UnsupportedOperationException()
-        override suspend fun getNews(offset: Int?, count: Int?): NewsFeedDto = throw UnsupportedOperationException()
+        override suspend fun getNews(offset: Int?, count: Int?): NewsFeedDto {
+            if (shouldFail) throw IOException("Network error")
+            return NewsFeedDto(total = 0, offset = 0, count = 0, items = emptyList())
+        }
         override suspend fun getNewsArticle(slug: String): NewsArticleDto = throw UnsupportedOperationException()
         override suspend fun getDocuments(): DocumentListDto = throw UnsupportedOperationException()
         override suspend fun getDocument(slug: String): DocumentItemDto = throw UnsupportedOperationException()

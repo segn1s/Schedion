@@ -5,6 +5,10 @@ import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import net.schedion.app.data.local.SavedSourceStore
+import net.schedion.app.data.local.SharedPreferencesSavedSourceStore
+import net.schedion.app.data.repository.FavoritesRepository
+import net.schedion.app.data.repository.FavoritesRepositoryImpl
 import net.schedion.app.data.repository.ScheduleRepository
 import net.schedion.app.data.repository.ScheduleRepositoryImpl
 
@@ -18,4 +22,16 @@ abstract class RepositoryModule {
     abstract fun bindScheduleRepository(
         impl: ScheduleRepositoryImpl,
     ): ScheduleRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindFavoritesRepository(
+        impl: FavoritesRepositoryImpl,
+    ): FavoritesRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSavedSourceStore(
+        impl: SharedPreferencesSavedSourceStore,
+    ): SavedSourceStore
 }

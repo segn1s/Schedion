@@ -1,6 +1,9 @@
 package net.schedion.app.data.repository
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import net.schedion.app.core.Resource
@@ -10,7 +13,10 @@ import net.schedion.app.data.local.dao.WeekDao
 import net.schedion.app.data.mapper.toDomain
 import net.schedion.app.data.mapper.toEntity
 import net.schedion.app.data.remote.SchedionApiService
+import net.schedion.app.data.remote.dto.GroupDto
 import net.schedion.app.data.remote.dto.HomeContentDto
+import net.schedion.app.data.remote.dto.NewsFeedDto
+import net.schedion.app.data.remote.dto.TeacherDto
 import net.schedion.app.domain.model.LessonItem
 import net.schedion.app.domain.model.LessonStatus
 import net.schedion.app.domain.model.PairItem
@@ -19,13 +25,14 @@ import net.schedion.app.domain.model.ScheduleWeek
 import net.schedion.app.domain.model.WeekInfo
 import java.time.LocalDate
 import java.time.LocalTime
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Интерфейс репозитория расписания. */
+/** Интерфейс репозитория расписания и справочников. */
 interface ScheduleRepository {
+    val availableGroups: StateFlow<List<GroupDto>>
+    val availableTeachers: StateFlow<List<TeacherDto>>
+
     fun getSchedule(
         week: String? = null,
         group: Int? = null,
@@ -37,6 +44,8 @@ interface ScheduleRepository {
     fun getWeeks(): Flow<Resource<List<WeekInfo>>>
 
     fun getHome(): Flow<Resource<HomeContentDto>>
+
+    fun getNews(offset: Int? = null, count: Int? = null): Flow<Resource<NewsFeedDto>>
 }
 
 /**
@@ -51,6 +60,14 @@ class ScheduleRepositoryImpl @Inject constructor(
     private val weekDao: WeekDao,
 ) : ScheduleRepository {
 
+    private val _availableGroups = MutableStateFlow<List<GroupDto>>(emptyList())
+    override val availableGroups: StateFlow<List<GroupDto>> = _availableGroups.asStateFlow()
+
+    private val _availableTeachers = MutableStateFlow<List<TeacherDto>>(emptyList())
+    override val availableTeachers: StateFlow<List<TeacherDto>> = _availableTeachers.asStateFlow()
+
+    private var cachedDefaultWeek: String? = null
+
     override fun getSchedule(
         week: String?,
         group: Int?,
@@ -60,13 +77,24 @@ class ScheduleRepositoryImpl @Inject constructor(
 
         val pairTimesMap = loadPairTimes()
 
+        // Определяем актуальную учебную неделю, если не передана явно
+        val resolvedWeek = week ?: resolveCurrentWeek()
+
         try {
-            // Запрос актуальных данных с сервера
+            // Запрос данных с сервера
             val remoteSchedule = apiService.getSchedule(
-                week = week,
+                week = resolvedWeek,
                 group = group,
                 teacher = teacher,
             )
+
+            // Обновляем доступные списки групп и преподавателей из фильтров API
+            if (remoteSchedule.filters.groups.isNotEmpty()) {
+                _availableGroups.value = mergeGroups(_availableGroups.value, remoteSchedule.filters.groups)
+            }
+            if (remoteSchedule.filters.teachers.isNotEmpty()) {
+                _availableTeachers.value = remoteSchedule.filters.teachers
+            }
 
             // Кэширование полученных занятий в локальную БД Room
             val entities = remoteSchedule.lessons.map { it.toEntity() }
@@ -163,6 +191,7 @@ class ScheduleRepositoryImpl @Inject constructor(
         emit(Resource.Loading)
         try {
             val remote = apiService.getWeeks()
+            cachedDefaultWeek = remote.currentWeekStart
             weekDao.upsertAll(remote.items.map { it.toEntity() })
             val currentStart = remote.currentWeekStart
             val domain = remote.items.map { item ->
@@ -186,6 +215,38 @@ class ScheduleRepositoryImpl @Inject constructor(
             emit(Resource.Success(remote))
         } catch (e: Exception) {
             emit(Resource.Error("Не удалось загрузить сводку главной страницы", e))
+        }
+    }
+
+    override fun getNews(offset: Int?, count: Int?): Flow<Resource<NewsFeedDto>> = flow {
+        emit(Resource.Loading)
+        try {
+            val remote = apiService.getNews(offset = offset, count = count)
+            emit(Resource.Success(remote))
+        } catch (e: Exception) {
+            emit(Resource.Error("Не удалось загрузить новости", e))
+        }
+    }
+
+    /**
+     * Объединяет группы недели с уже известными.
+     *
+     * Сервер отдаёт в фильтрах только группы с занятиями на выбранной неделе, поэтому без
+     * объединения часть групп периодически пропадала бы из общего списка.
+     */
+    private fun mergeGroups(known: List<GroupDto>, fresh: List<GroupDto>): List<GroupDto> =
+        (known + fresh)
+            .distinctBy { it.id }
+            .sortedWith(compareBy({ it.course }, { it.name }))
+
+    private suspend fun resolveCurrentWeek(): String {
+        cachedDefaultWeek?.let { return it }
+        return try {
+            val weeksDto = apiService.getWeeks()
+            cachedDefaultWeek = weeksDto.currentWeekStart
+            weeksDto.currentWeekStart
+        } catch (_: Exception) {
+            "2026-11-09"
         }
     }
 
@@ -243,20 +304,24 @@ class ScheduleRepositoryImpl @Inject constructor(
                 val dateStr = curr.toString()
                 val dayOfWeekIndex = (curr.dayOfWeek.value - 1).coerceIn(0, 6)
                 val dayLessons = lessons.filter { it.date == dateStr }
+                val isWeekend = dayOfWeekIndex >= 5
 
-                days.add(
-                    ScheduleDay(
-                        date = dateStr,
-                        dayOfWeek = shortDayNames[dayOfWeekIndex],
-                        dayNumber = curr.dayOfMonth.toString(),
-                        isToday = dateStr == todayStr,
-                        lessons = dayLessons,
-                    ),
-                )
+                // Пустые выходные не показываем: суббота без пар не должна висеть в расписании
+                if (!isWeekend || dayLessons.isNotEmpty()) {
+                    days.add(
+                        ScheduleDay(
+                            date = dateStr,
+                            dayOfWeek = shortDayNames[dayOfWeekIndex],
+                            dayNumber = curr.dayOfMonth.toString(),
+                            isToday = dateStr == todayStr,
+                            lessons = dayLessons,
+                        ),
+                    )
+                }
                 curr = curr.plusDays(1)
             }
         } catch (_: Exception) {
-            // fallback если формат дат отличается
+            // fallback
         }
         return days
     }
