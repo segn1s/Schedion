@@ -6,14 +6,18 @@ package net.schedion.app.ui.navigation
  * Аргументов у экранов пока нет, поэтому маршрутом служит сам объект экрана:
  * так компилятор гарантирует, что несуществующий маршрут передать нельзя.
  */
-sealed interface Screen {
-
-    /** Главный экран со сводкой. */
-    data object Home : Screen
-
-    /** Расписание занятий. */
-    data object Schedule : Screen
-
-    /** Документы и графики учебного процесса. */
+internal sealed interface Screen {
+    data object Onboarding : Screen
+    data object ScheduleDay : Screen
+    data object ScheduleWeek : Screen
+    data object ScheduleOffline : Screen
+    data object Teacher : Screen
+    data object Search : Screen
+    data object News : Screen
+    data object NewsDetails : Screen
     data object Documents : Screen
+    data object DocumentDetails : Screen
+    data object SchedulePicker : Screen
+    data object LessonDetails : Screen
+    data object Favorites : Screen
 }
