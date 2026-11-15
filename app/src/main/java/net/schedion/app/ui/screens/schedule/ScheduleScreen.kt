@@ -1,5 +1,16 @@
 package net.schedion.app.ui.screens.schedule
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,45 +98,66 @@ internal fun ScheduleScreen(
     val offline = page == SchedulePage.Offline
     val weekly = page == SchedulePage.GroupWeek
 
-    ScreenColumn(modifier) {
-        if (offline) {
-            OfflineBanner()
-            Spacer(Modifier.height(D.L))
-        }
-        ScheduleHeader(teacher, weekly, onChoose, onDay, onWeek)
-        if (weekly) {
-            Spacer(Modifier.height(D.Ml))
-            WeeklySchedule(onLessonDetails)
-        } else {
-            Spacer(Modifier.height(D.L))
-            DayStrip(offline, teacher, onDay, onOffline)
-            Spacer(Modifier.height(D.L))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (offline) "Суббота, 14.11.2026" else "Понедельник, 09.11.2026",
-                    modifier = Modifier.weight(1f),
-                    style = T.Title,
-                )
-                Text(
-                    if (teacher) "Неделя" else "Нед. 11",
-                    modifier = if (teacher) Modifier.clickable(onClick = onWeek) else Modifier,
-                    color = if (teacher) C.Primary else C.Muted,
-                    style = if (teacher) T.LabelStrong else T.Label,
-                )
+    ScreenColumn(modifier.animateContentSize(animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing))) {
+        AnimatedVisibility(
+            visible = offline,
+            enter = expandVertically(animationSpec = tween(240)) + fadeIn(animationSpec = tween(200)),
+            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(160)),
+        ) {
+            Column {
+                OfflineBanner()
+                Spacer(Modifier.height(D.L))
             }
-            Spacer(Modifier.height(D.L))
-            if (offline) {
-                EmptyDay(onDay)
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(D.M)) {
-                    val lessons = if (teacher) teacherLessons else groupLessons
-                    lessons.forEach { lesson ->
-                        LessonCard(lesson, onClick = onLessonDetails.takeIf { lesson.status == LessonStatus.Current })
-                    }
+        }
+
+        ScheduleHeader(teacher, weekly, onChoose, onDay, onWeek)
+
+        AnimatedContent(
+            targetState = weekly,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(220, easing = FastOutSlowInEasing)) togetherWith
+                    fadeOut(animationSpec = tween(160, easing = FastOutSlowInEasing))
+            },
+            label = "schedule_view_mode",
+        ) { isWeekly ->
+            if (isWeekly) {
+                Column {
+                    Spacer(Modifier.height(D.Ml))
+                    WeeklySchedule(onLessonDetails)
                 }
-                if (!teacher) {
+            } else {
+                Column {
                     Spacer(Modifier.height(D.L))
-                    Text("Обновлено в 10:42", Modifier.align(Alignment.CenterHorizontally), C.Muted, style = T.Small)
+                    DayStrip(offline, teacher, onDay, onOffline)
+                    Spacer(Modifier.height(D.L))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (offline) "Суббота, 14.11.2026" else "Понедельник, 09.11.2026",
+                            modifier = Modifier.weight(1f),
+                            style = T.Title,
+                        )
+                        Text(
+                            if (teacher) "Неделя" else "Нед. 11",
+                            modifier = if (teacher) Modifier.clickable(onClick = onWeek) else Modifier,
+                            color = if (teacher) C.Primary else C.Muted,
+                            style = if (teacher) T.LabelStrong else T.Label,
+                        )
+                    }
+                    Spacer(Modifier.height(D.L))
+                    if (offline) {
+                        EmptyDay(onDay)
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(D.M)) {
+                            val lessons = if (teacher) teacherLessons else groupLessons
+                            lessons.forEach { lesson ->
+                                LessonCard(lesson, onClick = onLessonDetails.takeIf { lesson.status == LessonStatus.Current })
+                            }
+                        }
+                        if (!teacher) {
+                            Spacer(Modifier.height(D.L))
+                            Text("Обновлено в 10:42", Modifier.align(Alignment.CenterHorizontally), C.Muted, style = T.Small)
+                        }
+                    }
                 }
             }
         }
@@ -180,23 +213,28 @@ private fun DayStrip(offline: Boolean, teacher: Boolean, onDay: () -> Unit, onOf
         weekdays.forEachIndexed { index, day ->
             val today = index == 0
             val selectedDay = index == if (offline) weekdays.lastIndex else 0
-            val fill = when {
+            val targetFill = when {
                 today && selectedDay -> C.Today
                 selectedDay -> C.Primary
                 today -> C.GoldSurface
                 else -> C.Surface
             }
-            val outline = when {
-                selectedDay -> fill
+            val targetOutline = when {
+                selectedDay -> targetFill
                 today -> C.GoldOutline
                 else -> C.Outline
             }
-            val dayColor = when {
+            val targetDayColor = when {
                 selectedDay && !today -> C.White
                 today && selectedDay -> C.Text
                 today -> C.GoldText
                 else -> C.Muted
             }
+
+            val fill by animateColorAsState(targetFill, animationSpec = tween(220), label = "day_fill_$index")
+            val outline by animateColorAsState(targetOutline, animationSpec = tween(220), label = "day_outline_$index")
+            val dayColor by animateColorAsState(targetDayColor, animationSpec = tween(220), label = "day_color_$index")
+
             val navigate: (() -> Unit)? = when {
                 index == 0 && offline -> onDay
                 index == weekdays.lastIndex && !offline && !teacher -> onOffline

@@ -1,5 +1,10 @@
 package net.schedion.app.ui.navigation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -27,7 +32,7 @@ import net.schedion.app.ui.components.bottomSpacing
 import net.schedion.app.ui.theme.SchedionColors as C
 import net.schedion.app.ui.theme.SchedionDimens as D
 
-/** Нижняя панель с фиксированной геометрией и отступами из макета. */
+/** Нижняя панель с плавной анимацией появления и фиксированной геометрией из макета. */
 @Composable
 internal fun BoxScope.MockSheet(
     onClose: () -> Unit,
@@ -35,26 +40,48 @@ internal fun BoxScope.MockSheet(
     tall: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Box(
-        Modifier.fillMaxSize().background(C.Scrim)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClose),
-    )
-    val height = if (tall) Modifier.padding(top = D.SheetPickerTop).fillMaxSize() else Modifier.fillMaxWidth()
-    Column(
-        modifier.align(Alignment.BottomCenter).then(height)
-            .background(C.Sheet, RoundedCornerShape(topStart = D.PanelRadius, topEnd = D.PanelRadius))
-            // Панель перехватывает касания в пустых областях, чтобы они не закрывали её.
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) awaitPointerEvent(PointerEventPass.Final)
-                }
-            }
-            .semantics { paneTitle = if (tall) "Чьё расписание" else "Детали занятия" }
-            .padding(top = D.Sm, bottom = if (tall) bottomSpacing() else bottomSpacing() + D.Xs),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn(animationSpec = tween(durationMillis = 200)),
+        modifier = Modifier.fillMaxSize(),
     ) {
-        Spacer(Modifier.width(D.SheetHandleWidth).height(D.Xs).background(C.Handle, CircleShape))
-        Spacer(Modifier.height(if (tall) D.M else D.Sm))
-        content()
+        Box(
+            Modifier.fillMaxSize().background(C.Scrim)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClose,
+                ),
+        )
+    }
+
+    val height = if (tall) Modifier.padding(top = D.SheetPickerTop).fillMaxSize() else Modifier.fillMaxWidth()
+
+    AnimatedVisibility(
+        visible = true,
+        enter = slideInVertically(
+            initialOffsetY = { it / 2 },
+            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        ) + fadeIn(animationSpec = tween(durationMillis = 200)),
+        modifier = modifier.align(Alignment.BottomCenter).then(height),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(C.Sheet, RoundedCornerShape(topStart = D.PanelRadius, topEnd = D.PanelRadius))
+                // Панель перехватывает касания в пустых областях, чтобы они не закрывали её.
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) awaitPointerEvent(PointerEventPass.Final)
+                    }
+                }
+                .semantics { paneTitle = if (tall) "Чьё расписание" else "Детали занятия" }
+                .padding(top = D.Sm, bottom = if (tall) bottomSpacing() else bottomSpacing() + D.Xs),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.width(D.SheetHandleWidth).height(D.Xs).background(C.Handle, CircleShape))
+            Spacer(Modifier.height(if (tall) D.M else D.Sm))
+            content()
+        }
     }
 }
