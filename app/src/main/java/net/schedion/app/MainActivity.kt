@@ -5,12 +5,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import dagger.hilt.android.AndroidEntryPoint
 import net.schedion.app.ui.navigation.AppNavGraph
+import net.schedion.app.ui.screens.news.NewsViewModel
+import net.schedion.app.ui.screens.schedule.ScheduleViewModel
 import net.schedion.app.ui.theme.SchedionTheme
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    private val scheduleViewModel: ScheduleViewModel by viewModels()
+    private val newsViewModel: NewsViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -19,7 +26,10 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             SchedionTheme {
-                AppNavGraph()
+                AppNavGraph(
+                    scheduleViewModel = scheduleViewModel,
+                    newsViewModel = newsViewModel,
+                )
             }
         }
     }

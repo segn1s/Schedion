@@ -1,6 +1,14 @@
 package net.schedion.app.ui.navigation
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,7 +21,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.key
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,77 +43,137 @@ import net.schedion.app.ui.screens.documents.DocumentDetails
 import net.schedion.app.ui.screens.documents.DocumentsScreen
 import net.schedion.app.ui.screens.news.NewsDetails
 import net.schedion.app.ui.screens.news.NewsScreen
+import net.schedion.app.ui.screens.news.NewsViewModel
 import net.schedion.app.ui.screens.people.FavoritesScreen
 import net.schedion.app.ui.screens.people.OnboardingScreen
 import net.schedion.app.ui.screens.people.SchedulePicker
 import net.schedion.app.ui.screens.people.SearchScreen
 import net.schedion.app.ui.screens.schedule.LessonDetails
-import net.schedion.app.ui.screens.schedule.LessonPreview
-import net.schedion.app.ui.screens.schedule.PickerPreview
-import net.schedion.app.ui.screens.schedule.SchedulePage
 import net.schedion.app.ui.screens.schedule.ScheduleScreen
-import net.schedion.app.ui.screens.schedule.TeacherPrompt
+import net.schedion.app.ui.screens.schedule.ScheduleViewModel
 import net.schedion.app.ui.theme.SchedionColors as C
 import net.schedion.app.ui.theme.SchedionDimens as D
 import net.schedion.app.ui.theme.SchedionType as T
 
-/** Связывает статические состояния макета и обрабатывает системную кнопку «Назад». */
+/** Связывает экраны навигации, анимирует переходы и обрабатывает системную кнопку «Назад». */
 @Composable
 internal fun AppNavGraph(
+    scheduleViewModel: ScheduleViewModel,
+    newsViewModel: NewsViewModel,
     modifier: Modifier = Modifier,
-    navController: AppNavController = rememberAppNavController(),
+    navController: AppNavController = rememberAppNavController(
+        // С сохранённым источником сразу открываем своё расписание, а не онбординг
+        initialScreen = if (scheduleViewModel.hasSavedSource) Screen.ScheduleDay else Screen.Onboarding,
+    ),
 ) {
     val screen = navController.currentScreen
+    // Пока открыт шит, за ним остаётся само расписание, а не пустая заглушка
+    val visualScreen = when (screen) {
+        Screen.SchedulePicker, Screen.LessonDetails -> Screen.ScheduleDay
+        else -> screen
+    }
     val onBack = navController::navigateBack
     val openDay = { navController.openRoot(Screen.ScheduleDay) }
-    val openTeacher = { navController.openRoot(Screen.Teacher) }
     val bottom = bottomSpacing()
     BackHandler(enabled = navController.canNavigateBack, onBack = onBack)
 
+    val selectedLesson by scheduleViewModel.selectedLesson.collectAsState()
+    val availableTeachers by scheduleViewModel.availableTeachers.collectAsState()
+
     SchedionBackdrop(modifier, warm = screen != Screen.NewsDetails) {
-        key(screen) {
-            when (screen) {
-                Screen.Onboarding -> OnboardingScreen(openDay, openTeacher)
+        AnimatedContent(
+            targetState = visualScreen,
+            transitionSpec = {
+                (fadeIn(animationSpec = tween(220, easing = FastOutSlowInEasing)) +
+                    scaleIn(initialScale = 0.98f, animationSpec = tween(220, easing = FastOutSlowInEasing))) togetherWith
+                    fadeOut(animationSpec = tween(180, easing = FastOutSlowInEasing))
+            },
+            label = "screen_transition",
+        ) { currentScreen ->
+            when (currentScreen) {
+                Screen.Onboarding -> OnboardingScreen(
+                    viewModel = scheduleViewModel,
+                    onGroup = openDay,
+                    onTeacher = openDay,
+                )
                 Screen.ScheduleDay, Screen.ScheduleWeek, Screen.ScheduleOffline, Screen.Teacher -> {
-                    ScheduleRoute(screen, navController)
+                    ScheduleScreen(
+                        viewModel = scheduleViewModel,
+                        onChoose = { navController.navigateTo(Screen.SchedulePicker) },
+                        onLessonDetails = { lesson ->
+                            scheduleViewModel.selectLesson(lesson)
+                            navController.navigateTo(Screen.LessonDetails)
+                        },
+                    )
                 }
-                Screen.Search -> SearchScreen(openDay)
-                Screen.News -> NewsScreen(onOpenArticle = { navController.navigateTo(Screen.NewsDetails) })
+                Screen.Search -> SearchScreen(
+                    viewModel = scheduleViewModel,
+                    onGroup = openDay,
+                )
+                Screen.News -> NewsScreen(
+                    viewModel = newsViewModel,
+                    onOpenArticle = { navController.navigateTo(Screen.NewsDetails) },
+                )
                 Screen.NewsDetails -> NewsDetails(onBack)
                 Screen.Documents -> DocumentsScreen(onOpenCalendar = { navController.navigateTo(Screen.DocumentDetails) })
                 Screen.DocumentDetails -> DocumentDetails(onBack)
-                Screen.SchedulePicker -> {
-                    PickerPreview(
-                        teacher = navController.previousScreen == Screen.Teacher,
-                        offline = navController.previousScreen == Screen.ScheduleOffline,
+                // Под шитом всегда показывается расписание (см. visualScreen)
+                Screen.SchedulePicker, Screen.LessonDetails -> Unit
+                Screen.Favorites -> FavoritesScreen(
+                    viewModel = scheduleViewModel,
+                    onBack = onBack,
+                    onOpenSchedule = openDay,
+                )
+            }
+        }
+
+        // Шиты рисуются поверх экрана и вне AnimatedContent: так их геометрия считается
+        // от границ всего приложения, а не от анимируемого контента.
+        val sheetScreen = when (screen) {
+            Screen.SchedulePicker, Screen.LessonDetails -> screen
+            else -> null
+        }
+        val sheetVisible = remember { MutableTransitionState(false) }
+        // Последний открытый шит: его содержимое остаётся на экране, пока проигрывается
+        // анимация закрытия, и только затем убирается из композиции.
+        var lastSheet by remember { mutableStateOf<Screen?>(null) }
+        LaunchedEffect(sheetScreen) {
+            if (sheetScreen != null) lastSheet = sheetScreen
+            sheetVisible.targetState = sheetScreen != null
+        }
+        val sheetContent = sheetScreen ?: lastSheet
+        if (sheetContent != null && (sheetVisible.currentState || sheetVisible.targetState)) {
+            SchedionBottomSheet(
+                visibleState = sheetVisible,
+                onClose = onBack,
+                tall = sheetContent == Screen.SchedulePicker,
+            ) {
+                when (sheetContent) {
+                    Screen.SchedulePicker -> SchedulePicker(
+                        viewModel = scheduleViewModel,
+                        onGroup = openDay,
+                        onTeacher = openDay,
+                        onFavorites = { navController.navigateTo(Screen.Favorites) },
                     )
-                    MockSheet(onBack, tall = true) {
-                        SchedulePicker(
-                            onGroup = openDay,
-                            onTeacher = openTeacher,
-                            onFavorites = { navController.navigateTo(Screen.Favorites) },
-                        )
-                    }
+                    Screen.LessonDetails -> LessonDetails(
+                        lesson = selectedLesson,
+                        onClose = onBack,
+                        onTeacher = {
+                            val teacherName = selectedLesson?.teachers
+                            val found = availableTeachers.find { it.shortName == teacherName || it.fullName == teacherName }
+                            if (found != null) {
+                                scheduleViewModel.selectTeacher(found)
+                            }
+                            openDay()
+                        },
+                    )
+                    else -> Unit
                 }
-                Screen.LessonDetails -> {
-                    LessonPreview()
-                    MockSheet(onBack) {
-                        LessonDetails(onBack, openTeacher)
-                    }
-                }
-                Screen.Favorites -> FavoritesScreen(onBack)
             }
         }
 
         val tab = tabFor(screen)
         if (tab != null) {
-            if (screen == Screen.Teacher) {
-                TeacherPrompt(
-                    Modifier.align(Alignment.BottomCenter)
-                        .padding(horizontal = D.NavMargin)
-                        .padding(bottom = bottom + D.NavHeight + D.Xl),
-                )
-            }
             BottomTabs(
                 tab,
                 Modifier.align(Alignment.BottomCenter).padding(horizontal = D.NavMargin).padding(bottom = bottom),
@@ -108,24 +181,6 @@ internal fun AppNavGraph(
             )
         }
     }
-}
-
-@Composable
-private fun ScheduleRoute(screen: Screen, controller: AppNavController) {
-    val page = when (screen) {
-        Screen.ScheduleWeek -> SchedulePage.GroupWeek
-        Screen.ScheduleOffline -> SchedulePage.Offline
-        Screen.Teacher -> SchedulePage.TeacherDay
-        else -> SchedulePage.GroupDay
-    }
-    ScheduleScreen(
-        page = page,
-        onDay = { controller.openRoot(Screen.ScheduleDay) },
-        onWeek = { controller.openRoot(Screen.ScheduleWeek) },
-        onOffline = { controller.openRoot(Screen.ScheduleOffline) },
-        onChoose = { controller.navigateTo(Screen.SchedulePicker) },
-        onLessonDetails = { controller.navigateTo(Screen.LessonDetails) },
-    )
 }
 
 private enum class Tab(val label: String, val icon: Glyph, val screen: Screen) {
