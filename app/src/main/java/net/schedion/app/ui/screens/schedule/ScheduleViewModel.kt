@@ -3,9 +3,11 @@ package net.schedion.app.ui.screens.schedule
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import net.schedion.app.core.Resource
 import net.schedion.app.data.local.SavedSourceStore
@@ -35,14 +37,20 @@ class ScheduleViewModel @Inject constructor(
 
     private val savedSource: FavoriteSource? = savedSourceStore.load()
 
-    /** true, если источник расписания уже был выбран при прошлом запуске. */
-    val hasSavedSource: Boolean = savedSource != null
+    private val _hasInitialSource = MutableStateFlow<Boolean?>(null)
+
+    /** null до чтения избранного, true при наличии источника, false для онбординга. */
+    val hasInitialSource: StateFlow<Boolean?> = _hasInitialSource.asStateFlow()
 
     val availableGroups: StateFlow<List<GroupDto>> = repository.availableGroups
     val availableTeachers: StateFlow<List<TeacherDto>> = repository.availableTeachers
 
-    /** Избранные группы и преподаватели в порядке добавления. */
+    /** Избранные группы и преподаватели в сохранённом порядке. */
     val favorites: StateFlow<List<FavoriteSource>> = favoritesRepository.favorites
+    val favoritesLimit = FavoritesRepository.MaxFavorites
+
+    private val favoritesLimitEvents = Channel<Unit>(Channel.CONFLATED)
+    val favoritesLimitReached = favoritesLimitEvents.receiveAsFlow()
 
     private val _selectedGroup = MutableStateFlow<GroupDto?>(null)
     val selectedGroup: StateFlow<GroupDto?> = _selectedGroup.asStateFlow()
@@ -76,22 +84,12 @@ class ScheduleViewModel @Inject constructor(
     val searchTab: StateFlow<Int> = _searchTab.asStateFlow()
 
     init {
-        // Восстанавливаем выбор прошлого запуска, чтобы открывать сразу своё расписание
-        savedSource?.let { saved ->
-            when (saved.kind) {
-                FavoriteKind.Group -> _selectedGroup.value = GroupDto(
-                    id = saved.id,
-                    name = saved.title,
-                    description = saved.subtitle,
-                    course = saved.course ?: 0,
-                )
-                FavoriteKind.Teacher -> _selectedTeacher.value = TeacherDto(
-                    id = saved.id,
-                    shortName = saved.title,
-                )
-            }
+        viewModelScope.launch {
+            val initialSource = favoritesRepository.getFirstFavorite() ?: savedSource
+            initialSource?.let(::setSelectedSource)
+            _hasInitialSource.value = initialSource != null
+            loadSchedule()
         }
-        loadSchedule()
     }
 
     fun loadSchedule() {
@@ -154,12 +152,18 @@ class ScheduleViewModel @Inject constructor(
 
     /** Добавляет группу в избранное или убирает её оттуда. */
     fun toggleGroupFavorite(group: GroupDto) {
-        viewModelScope.launch { favoritesRepository.toggle(group.toFavorite()) }
+        toggleFavorite(group.toFavorite())
     }
 
     /** Добавляет преподавателя в избранное или убирает его оттуда. */
     fun toggleTeacherFavorite(teacher: TeacherDto) {
-        viewModelScope.launch { favoritesRepository.toggle(teacher.toFavorite()) }
+        toggleFavorite(teacher.toFavorite())
+    }
+
+    private fun toggleFavorite(favorite: FavoriteSource) {
+        viewModelScope.launch {
+            if (!favoritesRepository.toggle(favorite)) favoritesLimitEvents.trySend(Unit)
+        }
     }
 
     /** Убирает источник из избранного. */
@@ -167,8 +171,19 @@ class ScheduleViewModel @Inject constructor(
         viewModelScope.launch { favoritesRepository.remove(favorite) }
     }
 
+    /** Сохраняет новую позицию после завершения перетаскивания. */
+    fun moveFavorite(favorite: FavoriteSource, toIndex: Int) {
+        viewModelScope.launch { favoritesRepository.move(favorite, toIndex) }
+    }
+
     /** Делает источник из избранного текущим расписанием. */
     fun openFavorite(favorite: FavoriteSource) {
+        savedSourceStore.save(setSelectedSource(favorite))
+        loadSchedule()
+    }
+
+    /** Восстанавливает выбор из справочника или из локально сохранённого источника. */
+    private fun setSelectedSource(favorite: FavoriteSource): FavoriteSource =
         when (favorite.kind) {
             FavoriteKind.Group -> {
                 val group = availableGroups.value.firstOrNull { it.id == favorite.id }
@@ -178,7 +193,9 @@ class ScheduleViewModel @Inject constructor(
                         description = favorite.subtitle,
                         course = favorite.course ?: 0,
                     )
-                selectGroup(group)
+                _selectedGroup.value = group
+                _selectedTeacher.value = null
+                group.toFavorite()
             }
             FavoriteKind.Teacher -> {
                 val teacher = availableTeachers.value.firstOrNull { it.id == favorite.id }
@@ -186,8 +203,9 @@ class ScheduleViewModel @Inject constructor(
                         id = favorite.id,
                         shortName = favorite.title,
                     )
-                selectTeacher(teacher)
+                _selectedTeacher.value = teacher
+                _selectedGroup.value = null
+                teacher.toFavorite()
             }
         }
-    }
 }

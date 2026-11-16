@@ -31,7 +31,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import net.schedion.app.data.remote.dto.GroupDto
 import net.schedion.app.data.remote.dto.TeacherDto
@@ -505,88 +504,3 @@ private fun PeopleHeading(label: String, modifier: Modifier = Modifier) {
     Text(label, modifier.padding(bottom = D.S), C.Secondary, style = T.LabelStrong)
 }
 
-@Composable
-internal fun FavoritesScreen(
-    viewModel: ScheduleViewModel,
-    onBack: () -> Unit,
-    onOpenSchedule: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val favorites by viewModel.favorites.collectAsState()
-
-    ScreenColumn(modifier, withTabs = false) {
-        Row(Modifier.fillMaxWidth()) {
-            Text("Отмена", Modifier.clickable(role = Role.Button, onClick = onBack), C.Secondary, style = T.BodyStrong)
-            Spacer(Modifier.weight(1f))
-            Text("Готово", Modifier.clickable(role = Role.Button, onClick = onBack).padding(end = D.Xs), C.Primary, style = T.BodyStrong)
-        }
-        Spacer(Modifier.height(D.Xl))
-        Text("Избранное", style = T.Heading)
-        Spacer(Modifier.height(D.Xs))
-        Text("Группы и преподаватели, сохранённые на устройстве.", color = C.Muted, style = T.Label)
-        Spacer(Modifier.height(D.L))
-
-        if (favorites.isEmpty()) {
-            MockCard(color = C.Past) {
-                Column(
-                    Modifier.fillMaxWidth().padding(D.Page),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    LineIcon(Glyph.Star, tint = C.Muted, size = D.HeroIcon)
-                    Spacer(Modifier.height(D.M))
-                    Text("В избранном пока пусто", style = T.Lead, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(D.Xs))
-                    Text(
-                        "Отметьте группу или преподавателя звёздочкой в поиске или в выборе расписания.",
-                        color = C.Secondary,
-                        style = T.Body,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
-        } else {
-            MockCard {
-                favorites.forEachIndexed { index, favorite ->
-                    if (index > 0) MockDivider()
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = D.FavoritesRow)
-                            .clickable(role = Role.Button) {
-                                viewModel.openFavorite(favorite)
-                                onOpenSchedule()
-                            }
-                            .padding(start = D.Page, end = D.Xs, top = D.S, bottom = D.S),
-                        horizontalArrangement = Arrangement.spacedBy(D.Page),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            Modifier.size(D.NavIcon + D.Sm)
-                                .clickable(role = Role.Button) { viewModel.removeFavorite(favorite) },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            LineIcon(Glyph.Remove, tint = C.Red)
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(favorite.title, style = T.Title)
-                            Text(
-                                favoriteLine(favorite),
-                                color = C.Muted,
-                                style = T.Label,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(D.L))
-            Text("В избранном ${favorites.size}", color = C.Muted, style = T.Label)
-        }
-    }
-}
-
-/** Подпись строки избранного: тип источника и его уточнение. */
-private fun favoriteLine(favorite: FavoriteSource): String {
-    val kindLabel = if (favorite.kind == FavoriteKind.Group) "Группа" else "Преподаватель"
-    val subtitle = favorite.subtitle
-    return if (subtitle.isNullOrBlank()) kindLabel else "$kindLabel · $subtitle"
-}
