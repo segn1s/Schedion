@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">Schedion</string>
+    <string name="favorites_count">В избранном %1$d из %2$d</string>
+    <string name="favorites_limit_reached">Достигнут лимит избранного: максимум %1$d</string>
+    <string name="favorites_reorder">Изменить порядок: %1$s</string>
+    <string name="favorites_move_up">Переместить выше</string>
+    <string name="favorites_move_down">Переместить ниже</string>
 </resources>

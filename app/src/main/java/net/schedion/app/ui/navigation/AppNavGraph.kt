@@ -17,8 +17,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,9 +35,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import kotlinx.coroutines.flow.collectLatest
+import net.schedion.app.R
 import net.schedion.app.ui.components.Glyph
 import net.schedion.app.ui.components.LineIcon
 import net.schedion.app.ui.components.SchedionBackdrop
@@ -61,11 +67,15 @@ internal fun AppNavGraph(
     scheduleViewModel: ScheduleViewModel,
     newsViewModel: NewsViewModel,
     modifier: Modifier = Modifier,
-    navController: AppNavController = rememberAppNavController(
-        // С сохранённым источником сразу открываем своё расписание, а не онбординг
-        initialScreen = if (scheduleViewModel.hasSavedSource) Screen.ScheduleDay else Screen.Onboarding,
-    ),
 ) {
+    val openScheduleOnLaunch = scheduleViewModel.hasInitialSource.collectAsState().value
+    if (openScheduleOnLaunch == null) {
+        SchedionBackdrop(modifier) {}
+        return
+    }
+    val navController = rememberAppNavController(
+        initialScreen = if (openScheduleOnLaunch) Screen.ScheduleDay else Screen.Onboarding,
+    )
     val screen = navController.currentScreen
     // Пока открыт шит, за ним остаётся само расписание, а не пустая заглушка
     val visualScreen = when (screen) {
@@ -79,6 +89,14 @@ internal fun AppNavGraph(
 
     val selectedLesson by scheduleViewModel.selectedLesson.collectAsState()
     val availableTeachers by scheduleViewModel.availableTeachers.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val favoritesLimitMessage = stringResource(R.string.favorites_limit_reached, scheduleViewModel.favoritesLimit)
+
+    LaunchedEffect(scheduleViewModel, favoritesLimitMessage) {
+        scheduleViewModel.favoritesLimitReached.collectLatest {
+            snackbarHostState.showSnackbar(favoritesLimitMessage)
+        }
+    }
 
     SchedionBackdrop(modifier, warm = screen != Screen.NewsDetails) {
         AnimatedContent(
@@ -180,6 +198,15 @@ internal fun AppNavGraph(
                 onSelect = { navController.openRoot(it.screen) },
             )
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).imePadding().padding(
+                start = D.Page,
+                end = D.Page,
+                bottom = bottom + D.Sm + if (tab != null) D.NavHeight else D.M,
+            ),
+        )
     }
 }
 

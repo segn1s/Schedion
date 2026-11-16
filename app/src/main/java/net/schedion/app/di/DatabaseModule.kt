@@ -9,7 +9,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 import net.schedion.app.data.local.SchedionDatabase
-import net.schedion.app.data.local.dao.FavoriteDao
 import net.schedion.app.data.local.dao.LessonDao
 import net.schedion.app.data.local.dao.PairDao
 import net.schedion.app.data.local.dao.WeekDao
@@ -26,7 +25,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): SchedionDatabase =
         Room.databaseBuilder(context, SchedionDatabase::class.java, DATABASE_NAME)
-            .addMigrations(SchedionDatabase.MIGRATION_1_2)
+            .addMigrations(SchedionDatabase.MIGRATION_1_2, SchedionDatabase.MIGRATION_2_3)
             .build()
 
     @Provides
@@ -37,7 +36,4 @@ object DatabaseModule {
 
     @Provides
     fun provideWeekDao(database: SchedionDatabase): WeekDao = database.weekDao()
-
-    @Provides
-    fun provideFavoriteDao(database: SchedionDatabase): FavoriteDao = database.favoriteDao()
 }

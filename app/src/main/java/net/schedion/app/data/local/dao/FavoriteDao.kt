@@ -4,16 +4,22 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import net.schedion.app.data.local.entity.FavoriteEntity
+
+private const val OrderedFavorites = "SELECT * FROM favorites ORDER BY position ASC, id ASC"
 
 /** Доступ к списку избранных источников расписания. */
 @Dao
 interface FavoriteDao {
 
-    /** Наблюдает за избранным в порядке добавления. */
-    @Query("SELECT * FROM favorites ORDER BY id ASC")
+    /** Наблюдает за избранным в сохранённом порядке. */
+    @Query(OrderedFavorites)
     fun observeAll(): Flow<List<FavoriteEntity>>
+
+    @Query(OrderedFavorites)
+    suspend fun getAll(): List<FavoriteEntity>
 
     /** Добавляет источник в избранное; повторное добавление игнорируется. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -23,7 +29,6 @@ interface FavoriteDao {
     @Query("DELETE FROM favorites WHERE kind = :kind AND sourceId = :sourceId")
     suspend fun delete(kind: String, sourceId: Int)
 
-    /** Возвращает количество записей избранного с указанным источником. */
-    @Query("SELECT COUNT(*) FROM favorites WHERE kind = :kind AND sourceId = :sourceId")
-    suspend fun count(kind: String, sourceId: Int): Int
+    @Update
+    suspend fun updateAll(favorites: List<FavoriteEntity>)
 }

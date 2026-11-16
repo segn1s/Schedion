@@ -1,5 +1,6 @@
 package net.schedion.app.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -19,4 +20,5 @@ data class FavoriteEntity(
     val subtitle: String?,
     /** Курс группы; null для преподавателя. */
     val course: Int?,
+    @ColumnInfo(defaultValue = "0") val position: Long = 0,
 )
