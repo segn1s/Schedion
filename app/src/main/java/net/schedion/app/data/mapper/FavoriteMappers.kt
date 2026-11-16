@@ -22,8 +22,8 @@ fun GroupDto.toFavorite(): FavoriteSource = FavoriteSource(
 fun TeacherDto.toFavorite(): FavoriteSource = FavoriteSource(
     kind = FavoriteKind.Teacher,
     id = id,
-    title = fullName,
-    subtitle = shortName ?: "Преподаватель",
+    title = shortName,
+    subtitle = "Преподаватель",
 )
 
 /** Преобразование доменной модели избранного в Entity. */

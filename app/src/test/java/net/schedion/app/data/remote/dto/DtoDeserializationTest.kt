@@ -26,6 +26,7 @@ class DtoDeserializationTest {
         assertEquals(listOf(3), cancellation.pairs)
         assertNull(cancellation.course)
         assertEquals(1, week.filters.groups.size)
+        assertEquals("Иванов И.И.", week.filters.teachers.single().shortName)
     }
 
     @Test
@@ -93,7 +94,7 @@ class DtoDeserializationTest {
           ],
           "filters": {
             "groups": [{"id": 3, "name": "2ИСиП_ИС1", "description": null, "course": 2}],
-            "teachers": [{"id": 7, "fullName": "Иванов Иван Иванович", "shortName": "Иванов И.И."}],
+            "teachers": [{"id": 7, "shortName": "Иванов И.И."}],
             "courses": [2]
           },
           "nextLessonDate": "2026-11-12"

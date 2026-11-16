@@ -85,6 +85,5 @@ data class GroupDto(
 @Serializable
 data class TeacherDto(
     val id: Int,
-    val fullName: String,
-    val shortName: String? = null,
+    val shortName: String,
 )
