@@ -160,7 +160,7 @@ internal fun AppNavGraph(
                         onClose = onBack,
                         onTeacher = {
                             val teacherName = selectedLesson?.teachers
-                            val found = availableTeachers.find { it.shortName == teacherName || it.fullName == teacherName }
+                            val found = availableTeachers.find { it.shortName == teacherName }
                             if (found != null) {
                                 scheduleViewModel.selectTeacher(found)
                             }

@@ -98,8 +98,7 @@ internal fun SearchScreen(
     val filteredTeachers = remember(teachers, query) {
         if (query.isBlank()) teachers
         else teachers.filter {
-            it.fullName.contains(query, ignoreCase = true) ||
-                (it.shortName?.contains(query, ignoreCase = true) == true)
+            it.shortName.contains(query, ignoreCase = true)
         }
     }
 
@@ -183,9 +182,9 @@ internal fun SearchScreen(
                             horizontalArrangement = Arrangement.spacedBy(D.Page),
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(teacher.fullName, style = T.Title)
+                                Text(teacher.shortName, style = T.Title)
                                 Text(
-                                    teacher.shortName ?: "Преподаватель",
+                                    "Преподаватель",
                                     color = C.Muted,
                                     style = T.Label,
                                     maxLines = 1,
@@ -226,8 +225,7 @@ internal fun OnboardingScreen(
     val filteredTeachers = remember(teachers, query) {
         if (query.isBlank()) teachers
         else teachers.filter {
-            it.fullName.contains(query, ignoreCase = true) ||
-                (it.shortName?.contains(query, ignoreCase = true) == true)
+            it.shortName.contains(query, ignoreCase = true)
         }
     }
 
@@ -289,8 +287,8 @@ internal fun OnboardingScreen(
                         filteredTeachers.forEachIndexed { index, teacher ->
                             if (index > 0) MockDivider()
                             DirectoryRow(
-                                title = teacher.fullName,
-                                subtitle = teacher.shortName,
+                                title = teacher.shortName,
+                                subtitle = null,
                                 onClick = {
                                     viewModel.selectTeacher(teacher)
                                     onTeacher()
@@ -330,8 +328,7 @@ internal fun SchedulePicker(
     val filteredTeachers = remember(teachers, query) {
         if (query.isBlank()) teachers
         else teachers.filter {
-            it.fullName.contains(query, ignoreCase = true) ||
-                (it.shortName?.contains(query, ignoreCase = true) == true)
+            it.shortName.contains(query, ignoreCase = true)
         }
     }
 
@@ -411,8 +408,8 @@ internal fun SchedulePicker(
             } else {
                 filteredTeachers.favoritesFirst(favorites, FavoriteKind.Teacher) { it.id }.forEach { teacher ->
                     PickerFavorite(
-                        title = teacher.fullName,
-                        subtitle = teacher.shortName ?: "Преподаватель",
+                        title = teacher.shortName,
+                        subtitle = "Преподаватель",
                         selected = selectedTeacher?.id == teacher.id,
                         onClick = {
                             viewModel.selectTeacher(teacher)

@@ -81,7 +81,7 @@ internal fun ScheduleScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     val isTeacher = selectedTeacher != null
-    val titleText = selectedTeacher?.fullName ?: selectedGroup?.name ?: "Расписание"
+    val titleText = selectedTeacher?.shortName ?: selectedGroup?.name ?: "Расписание"
     val subtitleText = if (isTeacher) "Расписание преподавателя" else "Расписание группы"
 
     val isOffline = (state as? Resource.Success)?.data?.isFromCache == true

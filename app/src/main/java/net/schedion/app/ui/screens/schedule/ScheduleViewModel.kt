@@ -87,8 +87,7 @@ class ScheduleViewModel @Inject constructor(
                 )
                 FavoriteKind.Teacher -> _selectedTeacher.value = TeacherDto(
                     id = saved.id,
-                    fullName = saved.title,
-                    shortName = saved.subtitle,
+                    shortName = saved.title,
                 )
             }
         }
@@ -185,8 +184,7 @@ class ScheduleViewModel @Inject constructor(
                 val teacher = availableTeachers.value.firstOrNull { it.id == favorite.id }
                     ?: TeacherDto(
                         id = favorite.id,
-                        fullName = favorite.title,
-                        shortName = favorite.subtitle,
+                        shortName = favorite.title,
                     )
                 selectTeacher(teacher)
             }
