@@ -1,10 +1,12 @@
 package net.schedion.app.ui.screens.documents
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,8 +21,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.foundation.layout.PaddingValues
+import net.schedion.app.R
 import net.schedion.app.ui.components.BackBar
 import net.schedion.app.ui.components.Chip
 import net.schedion.app.ui.components.Glyph
@@ -33,34 +36,34 @@ import net.schedion.app.ui.theme.SchedionColors as C
 import net.schedion.app.ui.theme.SchedionDimens as D
 import net.schedion.app.ui.theme.SchedionType as T
 
-internal enum class FileType(val label: String, val color: Color) {
-    Pdf("PDF", C.Pdf), Xlsx("XLSX", C.Xlsx), Docx("DOCX", C.Docx),
+internal enum class FileType(@param:StringRes @field:StringRes val labelRes: Int, val color: Color) {
+    Pdf(R.string.docs_format_pdf, C.Pdf), Xlsx(R.string.docs_format_xlsx, C.Xlsx), Docx(R.string.docs_format_docx, C.Docx),
 }
 
 internal data class Document(
-    val title: String,
-    val meta: String,
+    @param:StringRes @field:StringRes val titleRes: Int,
+    @param:StringRes @field:StringRes val metaRes: Int,
     val type: FileType,
 )
 
-private val calendar = Document("Календарный учебный график 2026/27", "Документ PDF · 1,2 МБ", FileType.Pdf)
+private val calendar = Document(R.string.docs_sample_calendar_title, R.string.docs_sample_calendar_meta, FileType.Pdf)
 private val academicDocuments = listOf(
     calendar,
-    Document("График консультаций преподавателей", "Таблица Excel · 48 КБ", FileType.Xlsx),
-    Document("Положение о текущем контроле успеваемости", "Документ PDF · 640 КБ", FileType.Pdf),
+    Document(R.string.docs_sample_consultations_title, R.string.docs_sample_consultations_meta, FileType.Xlsx),
+    Document(R.string.docs_sample_assessment_title, R.string.docs_sample_assessment_meta, FileType.Pdf),
 )
 private val forms = listOf(
-    Document("Заявление на академический отпуск", "Документ Word · 32 КБ", FileType.Docx),
-    Document("Заявление о переводе на другую форму обучения", "Документ Word · 29 КБ", FileType.Docx),
+    Document(R.string.docs_sample_leave_title, R.string.docs_sample_leave_meta, FileType.Docx),
+    Document(R.string.docs_sample_transfer_title, R.string.docs_sample_transfer_meta, FileType.Docx),
 )
 
 @Composable
 internal fun DocumentsScreen(onOpenCalendar: () -> Unit, modifier: Modifier = Modifier) {
     ScreenColumn(modifier) {
-        Text("Документы", style = T.Heading)
+        Text(stringResource(R.string.docs_title), style = T.Heading)
         Spacer(Modifier.height(D.L))
         Row(horizontalArrangement = Arrangement.spacedBy(D.Sm)) {
-            listOf("Все", "Учебный процесс", "Заявления").forEachIndexed { index, label ->
+            listOf(stringResource(R.string.docs_category_all), stringResource(R.string.docs_category_academic), stringResource(R.string.docs_category_forms)).forEachIndexed { index, label ->
                 val active = index == 0
                 Chip(
                     label,
@@ -72,9 +75,9 @@ internal fun DocumentsScreen(onOpenCalendar: () -> Unit, modifier: Modifier = Mo
             }
         }
         Spacer(Modifier.height(D.L))
-        DocumentSection("Учебный процесс", academicDocuments, onOpenCalendar)
+        DocumentSection(stringResource(R.string.docs_category_academic), academicDocuments, onOpenCalendar)
         Spacer(Modifier.height(D.L))
-        DocumentSection("Заявления", forms, onOpenCalendar)
+        DocumentSection(stringResource(R.string.docs_category_forms), forms, onOpenCalendar)
     }
 }
 
@@ -106,12 +109,12 @@ internal fun DocumentRow(
     ) {
         FileBadge(document.type)
         Column(Modifier.weight(1f)) {
-            Text(document.title, style = T.Title)
+            Text(stringResource(document.titleRes), style = T.Title)
             Spacer(Modifier.height(D.Tiny))
-            Text(document.meta, color = C.Muted, style = T.Label)
+            Text(stringResource(document.metaRes), color = C.Muted, style = T.Label)
         }
         if (attachment) {
-            Text("Скачать", color = C.Primary, style = T.LabelStrong)
+            Text(stringResource(R.string.common_download), color = C.Primary, style = T.LabelStrong)
         } else {
             LineIcon(Glyph.Download, tint = C.Primary)
         }
@@ -133,14 +136,14 @@ private fun FileBadge(type: FileType, large: Boolean = false) {
         ).background(type.color, shape).padding(bottom = if (large) D.Ml else D.S),
         contentAlignment = Alignment.BottomCenter,
     ) {
-        Text(type.label, color = C.White, style = if (large) T.LargeFile else T.File)
+        Text(stringResource(type.labelRes), color = C.White, style = if (large) T.LargeFile else T.File)
     }
 }
 
 @Composable
 internal fun DocumentDetails(onBack: () -> Unit, modifier: Modifier = Modifier) {
     ScreenColumn(modifier) {
-        BackBar("Документы", onBack)
+        BackBar(stringResource(R.string.docs_title), onBack)
         Spacer(Modifier.height(D.S))
         MockCard(large = true) {
             Column(
@@ -150,10 +153,10 @@ internal fun DocumentDetails(onBack: () -> Unit, modifier: Modifier = Modifier) 
             ) {
                 FileBadge(FileType.Pdf, large = true)
                 Spacer(Modifier.height(D.L))
-                Text(calendar.title, style = T.SheetHeading, textAlign = TextAlign.Center)
+                Text(stringResource(calendar.titleRes), style = T.SheetHeading, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(D.Page))
                 Text(
-                    "Сроки семестров, сессий, практик и каникул по курсам",
+                    stringResource(R.string.docs_sample_calendar_description),
                     color = C.Secondary, style = T.Body, textAlign = TextAlign.Center,
                 )
             }
@@ -161,24 +164,24 @@ internal fun DocumentDetails(onBack: () -> Unit, modifier: Modifier = Modifier) 
         Spacer(Modifier.height(D.Page))
         MockCard {
             Column(Modifier.padding(D.Page), verticalArrangement = Arrangement.spacedBy(D.Ml)) {
-                DetailRow("Для кого") {
+                DetailRow(stringResource(R.string.docs_audience)) {
                     Column {
-                        Chip("Студентам", C.PaleBlue, C.Primary)
-                        Chip("Преподавателям", C.PaleBlue, C.Primary)
+                        Chip(stringResource(R.string.docs_audience_students), C.PaleBlue, C.Primary)
+                        Chip(stringResource(R.string.docs_audience_teachers), C.PaleBlue, C.Primary)
                     }
                 }
-                DetailRow("Файл") { Text("grafik-2026-27.pdf", style = T.Body) }
-                DetailRow("Размер") { Text(calendar.meta, style = T.Body) }
-                DetailRow("Обновлён") { Text("01.09.2026", style = T.Body) }
+                DetailRow(stringResource(R.string.docs_file)) { Text(stringResource(R.string.docs_sample_file_name), style = T.Body) }
+                DetailRow(stringResource(R.string.docs_size)) { Text(stringResource(calendar.metaRes), style = T.Body) }
+                DetailRow(stringResource(R.string.docs_updated)) { Text(stringResource(R.string.docs_sample_updated), style = T.Body) }
             }
         }
         Spacer(Modifier.height(D.Page))
-        MockButton("Скачать", Modifier.fillMaxWidth(), primary = true, icon = Glyph.Download)
+        MockButton(stringResource(R.string.common_download), Modifier.fillMaxWidth(), primary = true, icon = Glyph.Download)
         Spacer(Modifier.height(D.Sm))
-        MockButton("Поделиться ссылкой", Modifier.fillMaxWidth())
+        MockButton(stringResource(R.string.docs_share_link), Modifier.fillMaxWidth())
         Spacer(Modifier.height(D.Page))
         Text(
-            "Ссылка постоянная: после замены файла она открывает новую версию",
+            stringResource(R.string.docs_permanent_link_hint),
             modifier = Modifier.fillMaxWidth(),
             color = C.Muted, style = T.Label, textAlign = TextAlign.Center,
         )
