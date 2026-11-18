@@ -15,7 +15,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,18 +34,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import net.schedion.app.R
 import net.schedion.app.core.Resource
 import net.schedion.app.domain.model.LessonItem
 import net.schedion.app.domain.model.LessonStatus
@@ -81,11 +76,11 @@ internal fun ScheduleScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     val isTeacher = selectedTeacher != null
-    val titleText = selectedTeacher?.shortName ?: selectedGroup?.name ?: "Расписание"
-    val subtitleText = if (isTeacher) "Расписание преподавателя" else "Расписание группы"
+    val titleText = selectedTeacher?.shortName ?: selectedGroup?.name ?: stringResource(R.string.schedule_title)
+    val subtitleText = if (isTeacher) stringResource(R.string.schedule_teacher) else stringResource(R.string.schedule_group)
 
     val isOffline = (state as? Resource.Success)?.data?.isFromCache == true
-    val cachedTime = (state as? Resource.Success)?.data?.cachedTimestamp ?: "недавно"
+    val cachedTime = (state as? Resource.Success)?.data?.cachedTimestamp ?: stringResource(R.string.state_cached_recently)
 
     // Обновление жестом «потянуть вниз», как в браузере
     PullToRefreshBox(
@@ -185,7 +180,7 @@ private fun DailyScheduleView(
                     style = T.Title,
                 )
                 Text(
-                    text = "Нед. ${schedule.weekStart}",
+                    text = stringResource(R.string.schedule_week_start, schedule.weekStart),
                     color = C.Muted,
                     style = T.Label,
                 )
@@ -194,8 +189,8 @@ private fun DailyScheduleView(
 
             if (currentDay.lessons.isEmpty()) {
                 EmptyDay(
-                    title = "В этот день пар нет",
-                    subtitle = "Наслаждайтесь свободным временем!",
+                    title = stringResource(R.string.state_schedule_day_empty),
+                    subtitle = stringResource(R.string.state_schedule_day_empty_hint),
                 )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(D.M)) {
@@ -209,8 +204,8 @@ private fun DailyScheduleView(
             }
         } else {
             EmptyDay(
-                title = "Занятий на этой неделе нет",
-                subtitle = "Попробуйте обновить страницу или выбрать другую неделю",
+                title = stringResource(R.string.state_schedule_week_empty),
+                subtitle = stringResource(R.string.state_schedule_week_empty_hint),
             )
         }
 
@@ -301,18 +296,18 @@ private fun RealLessonCard(lesson: LessonItem, onClick: () -> Unit) {
         Row(Modifier.padding(horizontal = D.Page, vertical = if (isCancelled) D.L else D.Ml)) {
             Column(Modifier.width(D.ScheduleTime), horizontalAlignment = Alignment.Start) {
                 Text(
-                    "${lesson.pairNumber} пара",
+                    stringResource(R.string.schedule_pair_number, lesson.pairNumber),
                     color = if (isCurrent) C.GoldText else if (isPast) C.Faded else C.Muted,
                     style = if (isCurrent) T.SmallStrong else T.Small,
                 )
                 Text(
-                    lesson.timeStart.ifEmpty { "--:--" },
+                    lesson.timeStart.ifEmpty { stringResource(R.string.common_time_unknown) },
                     color = if (isCancelled) C.Muted else if (isPast) C.Secondary else C.Text,
                     style = T.BodyStrong,
                     textDecoration = textDecor,
                 )
                 Text(
-                    lesson.timeEnd.ifEmpty { "--:--" },
+                    lesson.timeEnd.ifEmpty { stringResource(R.string.common_time_unknown) },
                     color = if (isPast) C.Faded else C.Muted,
                     style = T.Small,
                 )
@@ -324,17 +319,17 @@ private fun RealLessonCard(lesson: LessonItem, onClick: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        lesson.kind.ifEmpty { "Занятие" },
+                        lesson.kind.ifEmpty { stringResource(R.string.schedule_lesson) },
                         Modifier.weight(1f),
                         color = if (isPast) C.Faded else C.Secondary,
                         style = T.Small,
                     )
                     // Занятие может проводиться только для одной подгруппы
                     lesson.subgroup?.let { subgroup ->
-                        Chip("подгр. $subgroup", C.Cover, C.Primary)
+                        Chip(stringResource(R.string.schedule_subgroup_short, subgroup), C.Cover, C.Primary)
                     }
-                    if (isCurrent) Chip("Идёт сейчас", C.Today, C.Text)
-                    if (isCancelled) Chip("Отменена", C.RedTint, C.Red)
+                    if (isCurrent) Chip(stringResource(R.string.schedule_status_current), C.Today, C.Text)
+                    if (isCancelled) Chip(stringResource(R.string.schedule_status_cancelled), C.RedTint, C.Red)
                 }
                 Spacer(Modifier.height(D.Tiny))
                 Text(
@@ -345,10 +340,10 @@ private fun RealLessonCard(lesson: LessonItem, onClick: () -> Unit) {
                 )
                 Spacer(Modifier.height(D.Tiny))
                 val detailsText = listOfNotNull(
-                    lesson.room?.let { "ауд. $it" },
+                    lesson.room?.let { stringResource(R.string.schedule_room_short, it) },
                     lesson.teachers.takeIf { it.isNotEmpty() },
                     lesson.groupName,
-                ).joinToString(" · ")
+                ).joinToString(stringResource(R.string.common_detail_separator))
                 Text(
                     detailsText,
                     color = when {
@@ -371,11 +366,11 @@ private fun WeeklySchedule(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(D.Ml)) {
         days.forEach { day ->
-            Text("${day.dayOfWeek}, ${day.date}", style = T.BodyStrong)
+            Text(stringResource(R.string.schedule_day_date, day.dayOfWeek, day.date), style = T.BodyStrong)
             if (day.lessons.isEmpty()) {
                 MockCard(color = C.Past) {
                     Text(
-                        "Занятий нет",
+                        stringResource(R.string.state_no_lessons),
                         Modifier.padding(D.Ml),
                         color = C.Muted,
                         style = T.Label,
@@ -393,16 +388,16 @@ private fun WeeklySchedule(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(D.M),
                         ) {
-                            Text("${lesson.pairNumber}", color = C.Muted, style = T.LabelStrong)
-                            Text(lesson.timeStart.ifEmpty { "--:--" }, color = C.Muted, style = T.Small)
+                            Text(lesson.pairNumber.toString(), color = C.Muted, style = T.LabelStrong)
+                            Text(lesson.timeStart.ifEmpty { stringResource(R.string.common_time_unknown) }, color = C.Muted, style = T.Small)
                             Column(Modifier.weight(1f)) {
                                 Text(lesson.discipline, style = T.BodySemibold)
                                 Text(
                                     listOfNotNull(
-                                        lesson.room?.let { "ауд. $it" },
+                                        lesson.room?.let { stringResource(R.string.schedule_room_short, it) },
                                         lesson.teachers.takeIf { it.isNotEmpty() },
-                                        lesson.subgroup?.let { "подгр. $it" },
-                                    ).joinToString(" · "),
+                                        lesson.subgroup?.let { stringResource(R.string.schedule_subgroup_short, it) },
+                                    ).joinToString(stringResource(R.string.common_detail_separator)),
                                     color = C.Muted,
                                     style = T.Small,
                                 )
@@ -445,7 +440,7 @@ private fun ScheduleHeader(
                 LineIcon(Glyph.Down, tint = C.Muted, size = D.IconSmall)
             }
         }
-        Segments(listOf("День", "Неделя"), active = if (weekly) 1 else 0) { index ->
+        Segments(listOf(stringResource(R.string.schedule_day), stringResource(R.string.schedule_week)), active = if (weekly) 1 else 0) { index ->
             if (index == 0 && weekly) onDay()
             if (index == 1 && !weekly) onWeek()
         }
@@ -465,10 +460,10 @@ private fun OfflineBanner(timestamp: String, onRefresh: () -> Unit) {
         ) {
             StatusDot(C.Today)
             Column(Modifier.weight(1f)) {
-                Text("Нет сети", color = C.AmberText, style = T.BodyStrong)
-                Text("Показано сохранённое расписание от $timestamp", color = C.Secondary, style = T.Label)
+                Text(stringResource(R.string.state_offline), color = C.AmberText, style = T.BodyStrong)
+                Text(stringResource(R.string.state_cached_schedule, timestamp), color = C.Secondary, style = T.Label)
             }
-            MockButton("Обновить", compact = true, onClick = onRefresh)
+            MockButton(stringResource(R.string.common_refresh), compact = true, onClick = onRefresh)
         }
     }
 }
@@ -502,11 +497,11 @@ private fun ErrorCard(message: String, onRetry: () -> Unit) {
                 .padding(D.Page),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("Ошибка загрузки", color = C.Red, style = T.Title)
+            Text(stringResource(R.string.state_load_error), color = C.Red, style = T.Title)
             Spacer(Modifier.height(D.Xs))
             Text(message, color = C.Secondary, style = T.Body, textAlign = TextAlign.Center)
             Spacer(Modifier.height(D.M))
-            MockButton("Повторить", primary = true, compact = true, onClick = onRetry)
+            MockButton(stringResource(R.string.common_retry), primary = true, compact = true, onClick = onRetry)
         }
     }
 }

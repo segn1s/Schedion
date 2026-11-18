@@ -280,12 +280,12 @@ internal fun FavoritesList(
 private fun FavoritesHeader(count: Int, limit: Int, onBack: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.padding(bottom = D.M)) {
         Row(Modifier.fillMaxWidth()) {
-            Text("Отмена", Modifier.clickable(role = Role.Button, onClick = onBack), C.Secondary, style = T.BodyStrong)
+            Text(stringResource(R.string.common_cancel), Modifier.clickable(role = Role.Button, onClick = onBack), C.Secondary, style = T.BodyStrong)
             Spacer(Modifier.weight(1f))
-            Text("Готово", Modifier.clickable(role = Role.Button, onClick = onBack).padding(end = D.Xs), C.Primary, style = T.BodyStrong)
+            Text(stringResource(R.string.common_done), Modifier.clickable(role = Role.Button, onClick = onBack).padding(end = D.Xs), C.Primary, style = T.BodyStrong)
         }
         Spacer(Modifier.height(D.Xl))
-        Text("Избранное", style = T.Heading)
+        Text(stringResource(R.string.favorites_title), style = T.Heading)
         Spacer(Modifier.height(D.Xs))
         Text(stringResource(R.string.favorites_count, count, limit), color = C.Muted, style = T.Label)
     }
@@ -300,10 +300,10 @@ private fun EmptyFavorites() {
         ) {
             LineIcon(Glyph.Star, tint = C.Muted, size = D.HeroIcon)
             Spacer(Modifier.height(D.M))
-            Text("В избранном пока пусто", style = T.Lead, textAlign = TextAlign.Center)
+            Text(stringResource(R.string.favorites_empty_title), style = T.Lead, textAlign = TextAlign.Center)
             Spacer(Modifier.height(D.Xs))
             Text(
-                "Отметьте группу или преподавателя звёздочкой в поиске или в выборе расписания.",
+                stringResource(R.string.favorites_empty_hint),
                 color = C.Secondary,
                 style = T.Body,
                 textAlign = TextAlign.Center,
@@ -321,6 +321,7 @@ private fun FavoriteRow(
     onMoveUp: (() -> Unit)? = null,
     onMoveDown: (() -> Unit)? = null,
 ) {
+    val removeLabel = stringResource(R.string.favorites_remove_source, favorite.title)
     Row(
         modifier.fillMaxWidth().heightIn(min = D.FavoritesRow)
             .clip(RoundedCornerShape(D.CardRadius)).background(C.Surface)
@@ -329,7 +330,7 @@ private fun FavoriteRow(
     ) {
         Box(
             Modifier.size(D.NavIcon + D.Sm)
-                .then(if (onRemove != null) Modifier.clickable(role = Role.Button, onClick = onRemove) else Modifier),
+                .then(if (onRemove != null) Modifier.semantics { contentDescription = removeLabel }.clickable(role = Role.Button, onClick = onRemove) else Modifier),
             contentAlignment = Alignment.Center,
         ) {
             LineIcon(Glyph.Remove, tint = C.Red)
@@ -377,8 +378,9 @@ private fun FavoriteRow(
 }
 
 /** Подпись строки избранного: тип источника и его уточнение. */
+@Composable
 private fun favoriteLine(favorite: FavoriteSource): String {
-    val kindLabel = if (favorite.kind == FavoriteKind.Group) "Группа" else "Преподаватель"
+    val kindLabel = if (favorite.kind == FavoriteKind.Group) stringResource(R.string.common_group) else stringResource(R.string.common_teacher)
     val subtitle = favorite.subtitle
-    return if (subtitle.isNullOrBlank()) kindLabel else "$kindLabel · $subtitle"
+    return if (subtitle.isNullOrBlank()) kindLabel else stringResource(R.string.favorites_source_description, kindLabel, subtitle)
 }

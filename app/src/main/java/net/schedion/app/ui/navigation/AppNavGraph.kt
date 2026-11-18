@@ -1,6 +1,7 @@
 package net.schedion.app.ui.navigation
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
@@ -12,7 +13,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,7 +52,7 @@ import net.schedion.app.ui.screens.news.NewsScreen
 import net.schedion.app.ui.screens.news.NewsViewModel
 import net.schedion.app.ui.screens.people.FavoritesScreen
 import net.schedion.app.ui.screens.people.OnboardingScreen
-import net.schedion.app.ui.screens.people.SchedulePicker
+import net.schedion.app.ui.screens.people.SchedulePickerSheet
 import net.schedion.app.ui.screens.people.SearchScreen
 import net.schedion.app.ui.screens.schedule.LessonDetails
 import net.schedion.app.ui.screens.schedule.ScheduleScreen
@@ -167,7 +167,7 @@ internal fun AppNavGraph(
                 tall = sheetContent == Screen.SchedulePicker,
             ) {
                 when (sheetContent) {
-                    Screen.SchedulePicker -> SchedulePicker(
+                    Screen.SchedulePicker -> SchedulePickerSheet(
                         viewModel = scheduleViewModel,
                         onGroup = openDay,
                         onTeacher = openDay,
@@ -210,11 +210,11 @@ internal fun AppNavGraph(
     }
 }
 
-private enum class Tab(val label: String, val icon: Glyph, val screen: Screen) {
-    Schedule("Расписание", Glyph.Calendar, Screen.ScheduleDay),
-    Search("Поиск", Glyph.Search, Screen.Search),
-    News("Новости", Glyph.News, Screen.News),
-    Documents("Документы", Glyph.Document, Screen.Documents),
+private enum class Tab(@param:StringRes @field:StringRes val labelRes: Int, val icon: Glyph, val screen: Screen) {
+    Schedule(R.string.schedule_title, Glyph.Calendar, Screen.ScheduleDay),
+    Search(R.string.search_title, Glyph.Search, Screen.Search),
+    News(R.string.news_title, Glyph.News, Screen.News),
+    Documents(R.string.docs_title, Glyph.Document, Screen.Documents),
 }
 
 private fun tabFor(screen: Screen): Tab? = when (screen) {
@@ -246,7 +246,7 @@ private fun BottomTabs(active: Tab, modifier: Modifier = Modifier, onSelect: (Ta
                 verticalArrangement = Arrangement.spacedBy(D.Xs, Alignment.CenterVertically),
             ) {
                 LineIcon(tab.icon, tint = ink, size = D.NavIcon)
-                Text(tab.label, color = ink, style = if (selectedTab) T.SmallStrong else T.Small, maxLines = 1)
+                Text(stringResource(tab.labelRes), color = ink, style = if (selectedTab) T.SmallStrong else T.Small, maxLines = 1)
             }
         }
     }

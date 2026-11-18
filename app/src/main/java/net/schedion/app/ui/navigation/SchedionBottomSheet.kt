@@ -33,8 +33,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import net.schedion.app.R
 import net.schedion.app.ui.components.bottomSpacing
 import net.schedion.app.ui.theme.SchedionColors as C
 import net.schedion.app.ui.theme.SchedionDimens as D
@@ -59,6 +61,8 @@ internal fun SchedionBottomSheet(
     tall: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val sheetTitle = stringResource(if (tall) R.string.schedule_picker_title else R.string.schedule_lesson_details)
+
     // Затемнение повторяет состояние панели, но анимируется отдельной переходной моделью,
     // чтобы две анимации не перепирали друг другу currentState.
     val scrimVisible = remember { MutableTransitionState(visibleState.currentState) }
@@ -114,7 +118,7 @@ internal fun SchedionBottomSheet(
                             while (true) awaitPointerEvent(PointerEventPass.Final)
                         }
                     }
-                    .semantics { paneTitle = if (tall) "Чьё расписание" else "Детали занятия" }
+                    .semantics { paneTitle = sheetTitle }
                     .padding(top = D.Sm, bottom = bottomSpacing() + D.Sm),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
