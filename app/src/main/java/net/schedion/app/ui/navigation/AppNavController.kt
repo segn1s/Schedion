@@ -3,7 +3,8 @@ package net.schedion.app.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 
 /**
  * Собственный навигатор Schedion: хранит стек экранов и поддерживает переход вперёд и назад.
@@ -12,9 +13,17 @@ import androidx.compose.runtime.remember
  * и декларативно описывается в [AppNavGraph].
  */
 @Stable
-internal class AppNavController(initialScreen: Screen) {
+internal class AppNavController private constructor(screens: List<Screen>) {
+    constructor(initialScreen: Screen) : this(listOf(initialScreen))
 
-    private val backStack = mutableStateListOf(initialScreen)
+    private val backStack = mutableStateListOf<Screen>().apply { addAll(screens) }
+
+    companion object {
+        val Saver = listSaver<AppNavController, String>(
+            save = { controller -> controller.backStack.map { it.route } },
+            restore = { routes -> AppNavController(routes.map(::screenFromRoute)) },
+        )
+    }
 
     /** Экран, который отображается сейчас. */
     val currentScreen: Screen
@@ -48,4 +57,4 @@ internal class AppNavController(initialScreen: Screen) {
 /** Создаёт и запоминает [AppNavController] на время жизни композиции. */
 @Composable
 internal fun rememberAppNavController(initialScreen: Screen = Screen.Onboarding): AppNavController =
-    remember { AppNavController(initialScreen) }
+    rememberSaveable(saver = AppNavController.Saver) { AppNavController(initialScreen) }

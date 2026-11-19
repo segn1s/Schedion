@@ -23,6 +23,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.platform.LocalResources
+import net.schedion.app.ui.screens.documents.DocumentsViewModel
+import net.schedion.app.ui.screens.files.FilesViewModel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,11 +70,28 @@ import net.schedion.app.ui.theme.SchedionType as T
 internal fun AppNavGraph(
     scheduleViewModel: ScheduleViewModel,
     newsViewModel: NewsViewModel,
+    documentsViewModel: DocumentsViewModel,
+    filesViewModel: FilesViewModel,
+    networkStatusViewModel: NetworkStatusViewModel,
     modifier: Modifier = Modifier,
 ) {
+    val networkStatus by networkStatusViewModel.status.collectAsState()
+    val isOffline = networkStatus == NetworkStatus.Offline
+    LaunchedEffect(networkStatusViewModel) {
+        networkStatusViewModel.status.collect { status ->
+            if (status == NetworkStatus.Online) {
+                if (scheduleViewModel.contentState.value.isOffline) scheduleViewModel.refreshSchedule()
+                newsViewModel.retryNetworkErrors()
+                documentsViewModel.retryNetworkErrors()
+            }
+        }
+    }
+
     val openScheduleOnLaunch = scheduleViewModel.hasInitialSource.collectAsState().value
     if (openScheduleOnLaunch == null) {
-        SchedionBackdrop(modifier) {}
+        SchedionBackdrop(modifier) {
+            net.schedion.app.ui.components.ContentSkeleton(Modifier.padding(D.Page))
+        }
         return
     }
     val navController = rememberAppNavController(
@@ -89,7 +110,12 @@ internal fun AppNavGraph(
 
     val selectedLesson by scheduleViewModel.selectedLesson.collectAsState()
     val availableTeachers by scheduleViewModel.availableTeachers.collectAsState()
+    val savedScreens = rememberSaveableStateHolder()
+    val resources = LocalResources.current
     val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(filesViewModel, resources) {
+        filesViewModel.events.collect { message -> snackbarHostState.showSnackbar(resources.getString(message)) }
+    }
     val favoritesLimitMessage = stringResource(R.string.favorites_limit_reached, scheduleViewModel.favoritesLimit)
 
     LaunchedEffect(scheduleViewModel, favoritesLimitMessage) {
@@ -98,7 +124,7 @@ internal fun AppNavGraph(
         }
     }
 
-    SchedionBackdrop(modifier, warm = screen != Screen.NewsDetails) {
+    SchedionBackdrop(modifier, warm = screen !is Screen.NewsDetails) {
         AnimatedContent(
             targetState = visualScreen,
             transitionSpec = {
@@ -108,40 +134,48 @@ internal fun AppNavGraph(
             },
             label = "screen_transition",
         ) { currentScreen ->
-            when (currentScreen) {
-                Screen.Onboarding -> OnboardingScreen(
-                    viewModel = scheduleViewModel,
-                    onGroup = openDay,
-                    onTeacher = openDay,
-                )
-                Screen.ScheduleDay, Screen.ScheduleWeek, Screen.ScheduleOffline, Screen.Teacher -> {
-                    ScheduleScreen(
+            savedScreens.SaveableStateProvider(currentScreen.route) {
+                when (currentScreen) {
+                    Screen.Onboarding -> OnboardingScreen(
                         viewModel = scheduleViewModel,
-                        onChoose = { navController.navigateTo(Screen.SchedulePicker) },
-                        onLessonDetails = { lesson ->
-                            scheduleViewModel.selectLesson(lesson)
-                            navController.navigateTo(Screen.LessonDetails)
-                        },
+                        onGroup = openDay,
+                        onTeacher = openDay,
+                    )
+                    Screen.ScheduleDay, Screen.ScheduleWeek, Screen.ScheduleOffline, Screen.Teacher -> {
+                        ScheduleScreen(
+                            viewModel = scheduleViewModel,
+                            onChoose = { navController.navigateTo(Screen.SchedulePicker) },
+                            onLessonDetails = { lesson ->
+                                scheduleViewModel.selectLesson(lesson)
+                                navController.navigateTo(Screen.LessonDetails)
+                            },
+                            isOffline = isOffline,
+                        )
+                    }
+                    Screen.Search -> SearchScreen(
+                        viewModel = scheduleViewModel,
+                        onGroup = openDay,
+                        isOffline = isOffline,
+                    )
+                    Screen.News -> NewsScreen(
+                        viewModel = newsViewModel,
+                        files = filesViewModel,
+                        isOffline = isOffline,
+                        onOpenArticle = { slug -> newsViewModel.openArticle(slug); navController.navigateTo(Screen.NewsDetails(slug)) },
+                    )
+                    is Screen.NewsDetails -> NewsDetails(currentScreen.slug, newsViewModel, filesViewModel, onBack, isOffline)
+                    Screen.Documents -> DocumentsScreen(documentsViewModel, filesViewModel,
+                        isOffline = isOffline,
+                        onOpenDocument = { slug -> documentsViewModel.openDocument(slug); navController.navigateTo(Screen.DocumentDetails(slug)) })
+                    is Screen.DocumentDetails -> DocumentDetails(currentScreen.slug, documentsViewModel, filesViewModel, onBack, isOffline)
+                    // Под шитом всегда показывается расписание (см. visualScreen)
+                    Screen.SchedulePicker, Screen.LessonDetails -> Unit
+                    Screen.Favorites -> FavoritesScreen(
+                        viewModel = scheduleViewModel,
+                        onBack = onBack,
+                        onOpenSchedule = openDay,
                     )
                 }
-                Screen.Search -> SearchScreen(
-                    viewModel = scheduleViewModel,
-                    onGroup = openDay,
-                )
-                Screen.News -> NewsScreen(
-                    viewModel = newsViewModel,
-                    onOpenArticle = { navController.navigateTo(Screen.NewsDetails) },
-                )
-                Screen.NewsDetails -> NewsDetails(onBack)
-                Screen.Documents -> DocumentsScreen(onOpenCalendar = { navController.navigateTo(Screen.DocumentDetails) })
-                Screen.DocumentDetails -> DocumentDetails(onBack)
-                // Под шитом всегда показывается расписание (см. visualScreen)
-                Screen.SchedulePicker, Screen.LessonDetails -> Unit
-                Screen.Favorites -> FavoritesScreen(
-                    viewModel = scheduleViewModel,
-                    onBack = onBack,
-                    onOpenSchedule = openDay,
-                )
             }
         }
 
@@ -221,7 +255,7 @@ private fun tabFor(screen: Screen): Tab? = when (screen) {
     Screen.ScheduleDay, Screen.ScheduleWeek, Screen.ScheduleOffline, Screen.Teacher -> Tab.Schedule
     Screen.Search -> Tab.Search
     Screen.News -> Tab.News
-    Screen.Documents, Screen.DocumentDetails -> Tab.Documents
+    Screen.Documents, is Screen.DocumentDetails -> Tab.Documents
     else -> null
 }
 

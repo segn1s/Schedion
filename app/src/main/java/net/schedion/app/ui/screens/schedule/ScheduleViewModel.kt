@@ -3,6 +3,8 @@ package net.schedion.app.ui.screens.schedule
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import net.schedion.app.core.ContentState
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +46,8 @@ class ScheduleViewModel @Inject constructor(
 
     val availableGroups: StateFlow<List<GroupDto>> = repository.availableGroups
     val availableTeachers: StateFlow<List<TeacherDto>> = repository.availableTeachers
+    internal val groupsSavedAt: StateFlow<Long?> = repository.groupsSavedAt
+    internal val teachersSavedAt: StateFlow<Long?> = repository.teachersSavedAt
 
     /** Избранные группы и преподаватели в сохранённом порядке. */
     val favorites: StateFlow<List<FavoriteSource>> = favoritesRepository.favorites
@@ -60,6 +64,10 @@ class ScheduleViewModel @Inject constructor(
 
     private val _currentWeek = MutableStateFlow<String?>(null)
     val currentWeek: StateFlow<String?> = _currentWeek.asStateFlow()
+
+    private var scheduleJob: Job? = null
+    private val _contentState = MutableStateFlow(ContentState<ScheduleWeek>())
+    val contentState = _contentState.asStateFlow()
 
     private val _scheduleState = MutableStateFlow<Resource<ScheduleWeek>>(Resource.Loading)
     val scheduleState: StateFlow<Resource<ScheduleWeek>> = _scheduleState.asStateFlow()
@@ -93,23 +101,25 @@ class ScheduleViewModel @Inject constructor(
     }
 
     fun loadSchedule() {
-        viewModelScope.launch {
-            _isRefreshing.value = true
-            val groupId = _selectedGroup.value?.id
-            val teacherId = _selectedTeacher.value?.id
-            val week = _currentWeek.value
-
-            repository.getSchedule(week = week, group = groupId, teacher = teacherId)
-                .collect { resource ->
-                    _scheduleState.value = resource
-                    if (resource is Resource.Success && _selectedGroup.value == null && _selectedTeacher.value == null) {
-                        repository.availableGroups.value.firstOrNull()?.let { group ->
-                            _selectedGroup.value = group
-                        }
-                    }
-                    _isRefreshing.value = false
+        scheduleJob?.cancel()
+        scheduleJob = viewModelScope.launch {
+            repository.getSchedule(week = _currentWeek.value, group = _selectedGroup.value?.id,
+                teacher = _selectedTeacher.value?.id).collect { resource ->
+                if (resource is Resource.Success && resource.isFromCache && _contentState.value.data != null) return@collect
+                _contentState.value = _contentState.value.accept(resource)
+                _scheduleState.value = _contentState.value.resource
+                _isRefreshing.value = _contentState.value.isRefreshing
+                if (resource is Resource.Success) {
+                    _selectedDayIndex.value = _selectedDayIndex.value.coerceIn(0, (resource.data.days.size - 1).coerceAtLeast(0))
                 }
+            }
         }
+    }
+
+    private fun clearShownSchedule() {
+        _contentState.value = ContentState()
+        _scheduleState.value = Resource.Loading
+        _selectedDayIndex.value = 0
     }
 
     fun refreshSchedule() {
@@ -117,6 +127,7 @@ class ScheduleViewModel @Inject constructor(
     }
 
     fun selectGroup(group: GroupDto) {
+        if (_selectedGroup.value?.id != group.id || _selectedTeacher.value != null) clearShownSchedule()
         _selectedGroup.value = group
         _selectedTeacher.value = null
         savedSourceStore.save(group.toFavorite())
@@ -124,6 +135,7 @@ class ScheduleViewModel @Inject constructor(
     }
 
     fun selectTeacher(teacher: TeacherDto) {
+        if (_selectedTeacher.value?.id != teacher.id || _selectedGroup.value != null) clearShownSchedule()
         _selectedTeacher.value = teacher
         _selectedGroup.value = null
         savedSourceStore.save(teacher.toFavorite())
@@ -178,6 +190,7 @@ class ScheduleViewModel @Inject constructor(
 
     /** Делает источник из избранного текущим расписанием. */
     fun openFavorite(favorite: FavoriteSource) {
+        clearShownSchedule()
         savedSourceStore.save(setSelectedSource(favorite))
         loadSchedule()
     }

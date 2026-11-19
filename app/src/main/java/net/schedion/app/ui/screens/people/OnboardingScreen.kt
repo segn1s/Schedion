@@ -27,6 +27,7 @@ import net.schedion.app.R
 import net.schedion.app.ui.components.DirectoryRow
 import net.schedion.app.ui.components.MockCard
 import net.schedion.app.ui.components.MockDivider
+import net.schedion.app.ui.components.DirectoryStatus
 import net.schedion.app.ui.components.PeopleHeading
 import net.schedion.app.ui.components.SearchField
 import net.schedion.app.ui.components.bottomSpacing
@@ -42,6 +43,7 @@ internal fun OnboardingScreen(
     onTeacher: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val state by viewModel.contentState.collectAsState()
     val groups by viewModel.availableGroups.collectAsState()
     val teachers by viewModel.availableTeachers.collectAsState()
     var query by remember { mutableStateOf("") }
@@ -82,8 +84,9 @@ internal fun OnboardingScreen(
                 SearchField(value = query, onValueChange = { query = it }, placeholder = stringResource(R.string.search_onboarding_query_hint))
                 Spacer(Modifier.height(D.Page))
 
+                DirectoryStatus(state, groups.isNotEmpty() || teachers.isNotEmpty(), viewModel::refreshSchedule)
                 PeopleHeading(stringResource(R.string.search_groups_count, filteredGroups.size))
-                if (filteredGroups.isEmpty()) {
+                if (filteredGroups.isEmpty() && !state.isRefreshing) {
                     Text(stringResource(R.string.search_groups_empty), color = C.Muted, style = T.Body)
                 } else {
                     filteredGroups.groupedByCourse().forEach { (course, courseGroups) ->
@@ -112,7 +115,7 @@ internal fun OnboardingScreen(
 
                 Spacer(Modifier.height(D.S))
                 PeopleHeading(stringResource(R.string.search_teachers_count, filteredTeachers.size))
-                if (filteredTeachers.isEmpty()) {
+                if (filteredTeachers.isEmpty() && !state.isRefreshing) {
                     Text(stringResource(R.string.search_teachers_empty), color = C.Muted, style = T.Body)
                 } else {
                     MockCard {

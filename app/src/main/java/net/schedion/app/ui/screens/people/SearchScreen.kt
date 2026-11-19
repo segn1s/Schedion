@@ -23,6 +23,8 @@ import net.schedion.app.domain.model.FavoriteKind
 import net.schedion.app.ui.components.FavoriteStar
 import net.schedion.app.ui.components.MockCard
 import net.schedion.app.ui.components.MockDivider
+import net.schedion.app.ui.components.DirectoryStatus
+import net.schedion.app.ui.components.OfflineBanner
 import net.schedion.app.ui.components.PeopleHeading
 import net.schedion.app.ui.components.ScreenColumn
 import net.schedion.app.ui.components.SearchField
@@ -36,10 +38,12 @@ import net.schedion.app.ui.theme.SchedionType as T
 internal fun SearchScreen(
     viewModel: ScheduleViewModel,
     onGroup: () -> Unit,
+    isOffline: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val query by viewModel.searchQuery.collectAsState()
     val tabIndex by viewModel.searchTab.collectAsState()
+    val state by viewModel.contentState.collectAsState()
     val groups by viewModel.availableGroups.collectAsState()
     val teachers by viewModel.availableTeachers.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
@@ -63,6 +67,12 @@ internal fun SearchScreen(
         Text(stringResource(R.string.search_title), style = T.Heading)
         Spacer(Modifier.height(D.L))
 
+        if (isOffline) {
+            val directorySavedAt = if (tabIndex == 0) viewModel.groupsSavedAt else viewModel.teachersSavedAt
+            OfflineBanner(savedAt = directorySavedAt.collectAsState().value)
+            Spacer(Modifier.height(D.L))
+        }
+
         SearchField(
             value = query,
             onValueChange = { viewModel.setSearchQuery(it) },
@@ -80,9 +90,11 @@ internal fun SearchScreen(
         )
         Spacer(Modifier.height(D.L))
 
+        DirectoryStatus(state, groups.isNotEmpty() || teachers.isNotEmpty(), viewModel::refreshSchedule,
+            showOfflineBanner = false)
         if (tabIndex == 0) {
             PeopleHeading(stringResource(R.string.search_groups))
-            if (filteredGroups.isEmpty()) {
+            if (filteredGroups.isEmpty() && !state.isRefreshing) {
                 Text(stringResource(R.string.search_groups_empty), color = C.Muted, style = T.Body)
             } else {
                 MockCard {
@@ -120,7 +132,7 @@ internal fun SearchScreen(
             }
         } else {
             PeopleHeading(stringResource(R.string.search_teachers))
-            if (filteredTeachers.isEmpty()) {
+            if (filteredTeachers.isEmpty() && !state.isRefreshing) {
                 Text(stringResource(R.string.search_teachers_empty), color = C.Muted, style = T.Body)
             } else {
                 MockCard {

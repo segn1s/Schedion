@@ -22,6 +22,7 @@ import net.schedion.app.R
 import net.schedion.app.domain.model.FavoriteKind
 import net.schedion.app.ui.components.MockButton
 import net.schedion.app.ui.components.MockDivider
+import net.schedion.app.ui.components.DirectoryStatus
 import net.schedion.app.ui.components.PeopleHeading
 import net.schedion.app.ui.components.PickerFavorite
 import net.schedion.app.ui.components.SearchField
@@ -38,6 +39,7 @@ internal fun SchedulePickerSheet(
     onFavorites: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val state by viewModel.contentState.collectAsState()
     val groups by viewModel.availableGroups.collectAsState()
     val teachers by viewModel.availableTeachers.collectAsState()
     val selectedGroup by viewModel.selectedGroup.collectAsState()
@@ -77,6 +79,7 @@ internal fun SchedulePickerSheet(
             modifier = Modifier.padding(horizontal = D.Page),
         )
         Column(Modifier.padding(top = D.M)) {
+            DirectoryStatus(state, groups.isNotEmpty() || teachers.isNotEmpty(), viewModel::refreshSchedule)
             if (favorites.isNotEmpty() && query.isBlank()) {
                 PeopleHeading(stringResource(R.string.favorites_title), Modifier.padding(horizontal = D.Page))
                 favorites.forEach { favorite ->
@@ -100,7 +103,7 @@ internal fun SchedulePickerSheet(
                 stringResource(R.string.search_groups_count, filteredGroups.size),
                 Modifier.padding(horizontal = D.Page),
             )
-            if (filteredGroups.isEmpty()) {
+            if (filteredGroups.isEmpty() && !state.isRefreshing) {
                 Text(stringResource(R.string.search_groups_empty), Modifier.padding(horizontal = D.Page), color = C.Muted, style = T.Body)
             } else {
                 filteredGroups.groupedByCourse().forEach { (course, courseGroups) ->
@@ -131,7 +134,7 @@ internal fun SchedulePickerSheet(
                 stringResource(R.string.search_teachers_count, filteredTeachers.size),
                 Modifier.padding(horizontal = D.Page),
             )
-            if (filteredTeachers.isEmpty()) {
+            if (filteredTeachers.isEmpty() && !state.isRefreshing) {
                 Text(stringResource(R.string.search_teachers_empty), Modifier.padding(horizontal = D.Page), color = C.Muted, style = T.Body)
             } else {
                 filteredTeachers.favoritesFirst(favorites, FavoriteKind.Teacher) { it.id }.forEach { teacher ->
