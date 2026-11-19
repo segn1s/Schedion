@@ -8,6 +8,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import dagger.hilt.android.AndroidEntryPoint
 import net.schedion.app.ui.navigation.AppNavGraph
+import net.schedion.app.ui.navigation.NetworkStatusViewModel
+import net.schedion.app.ui.screens.documents.DocumentsViewModel
+import net.schedion.app.ui.screens.files.FilesViewModel
 import net.schedion.app.ui.screens.news.NewsViewModel
 import net.schedion.app.ui.screens.schedule.ScheduleViewModel
 import net.schedion.app.ui.theme.SchedionTheme
@@ -17,6 +20,9 @@ class MainActivity : ComponentActivity() {
 
     private val scheduleViewModel: ScheduleViewModel by viewModels()
     private val newsViewModel: NewsViewModel by viewModels()
+    private val documentsViewModel: DocumentsViewModel by viewModels()
+    private val filesViewModel: FilesViewModel by viewModels()
+    private val networkStatusViewModel: NetworkStatusViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,6 +35,9 @@ class MainActivity : ComponentActivity() {
                 AppNavGraph(
                     scheduleViewModel = scheduleViewModel,
                     newsViewModel = newsViewModel,
+                    documentsViewModel = documentsViewModel,
+                    filesViewModel = filesViewModel,
+                    networkStatusViewModel = networkStatusViewModel,
                 )
             }
         }

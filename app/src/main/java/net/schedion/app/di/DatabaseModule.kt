@@ -25,7 +25,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): SchedionDatabase =
         Room.databaseBuilder(context, SchedionDatabase::class.java, DATABASE_NAME)
-            .addMigrations(SchedionDatabase.MIGRATION_1_2, SchedionDatabase.MIGRATION_2_3)
+            .addMigrations(SchedionDatabase.MIGRATION_1_2, SchedionDatabase.MIGRATION_2_3, SchedionDatabase.MIGRATION_3_4)
             .build()
 
     @Provides
@@ -36,4 +36,9 @@ object DatabaseModule {
 
     @Provides
     fun provideWeekDao(database: SchedionDatabase): WeekDao = database.weekDao()
+    @Provides
+    fun provideContentCacheDao(database: SchedionDatabase): net.schedion.app.data.local.dao.ContentCacheDao = database.contentCacheDao()
+
+    @Provides
+    fun provideDownloadDao(database: SchedionDatabase): net.schedion.app.data.local.dao.DownloadDao = database.downloadDao()
 }

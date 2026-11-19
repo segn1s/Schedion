@@ -34,4 +34,9 @@ abstract class RepositoryModule {
     abstract fun bindSavedSourceStore(
         impl: SharedPreferencesSavedSourceStore,
     ): SavedSourceStore
+    @Binds
+    abstract fun bindNewsRepository(impl: net.schedion.app.data.repository.NewsRepositoryImpl): net.schedion.app.data.repository.NewsRepository
+
+    @Binds
+    abstract fun bindDocumentsRepository(impl: net.schedion.app.data.repository.DocumentsRepositoryImpl): net.schedion.app.data.repository.DocumentsRepository
 }

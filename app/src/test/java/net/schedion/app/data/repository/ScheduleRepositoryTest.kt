@@ -8,12 +8,14 @@ import net.schedion.app.core.Resource
 import net.schedion.app.data.local.dao.LessonDao
 import net.schedion.app.data.local.dao.PairDao
 import net.schedion.app.data.local.dao.WeekDao
+import net.schedion.app.data.local.entity.ContentCacheEntity
 import net.schedion.app.data.local.entity.LessonEntity
 import net.schedion.app.data.local.entity.PairEntity
 import net.schedion.app.data.local.entity.WeekEntity
 import net.schedion.app.data.remote.SchedionApiService
 import net.schedion.app.data.remote.dto.DocumentItemDto
 import net.schedion.app.data.remote.dto.DocumentListDto
+import net.schedion.app.data.remote.dto.GroupDto
 import net.schedion.app.data.remote.dto.HomeContentDto
 import net.schedion.app.data.remote.dto.LessonKind
 import net.schedion.app.data.remote.dto.NewsArticleDto
@@ -24,6 +26,7 @@ import net.schedion.app.data.remote.dto.ScheduleFiltersDto
 import net.schedion.app.data.remote.dto.ScheduleLessonDto
 import net.schedion.app.data.remote.dto.ScheduleWeekDto
 import net.schedion.app.data.remote.dto.SemesterDto
+import net.schedion.app.data.remote.dto.TeacherDto
 import net.schedion.app.data.remote.dto.WeekColor
 import net.schedion.app.data.remote.dto.WeekItemDto
 import net.schedion.app.data.remote.dto.WeekListDto
@@ -31,6 +34,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import net.schedion.app.data.remote.SchedionJson
 import java.io.IOException
 
 class ScheduleRepositoryTest {
@@ -78,7 +82,10 @@ class ScheduleRepositoryTest {
         }
     }
 
-    private class FakeApiService(var shouldFail: Boolean = false) : SchedionApiService {
+    private class FakeApiService(
+        var shouldFail: Boolean = false,
+        var filters: ScheduleFiltersDto = ScheduleFiltersDto(emptyList(), emptyList(), emptyList()),
+    ) : SchedionApiService {
         override suspend fun getSchedule(
             week: String?,
             group: Int?,
@@ -101,7 +108,7 @@ class ScheduleRepositoryTest {
                     ),
                 ),
                 cancellations = emptyList(),
-                filters = ScheduleFiltersDto(emptyList(), emptyList(), emptyList()),
+                filters = filters,
             )
         }
 
@@ -143,7 +150,7 @@ class ScheduleRepositoryTest {
         val lessonDao = FakeLessonDao()
         val pairDao = FakePairDao()
         val weekDao = FakeWeekDao()
-        val repository = ScheduleRepositoryImpl(api, lessonDao, pairDao, weekDao)
+        val repository = ScheduleRepositoryImpl(api, lessonDao, pairDao, weekDao, CachedContent(InMemoryContentCacheDao(), SchedionJson))
 
         val states = repository.getSchedule().toList()
 
@@ -159,39 +166,65 @@ class ScheduleRepositoryTest {
     }
 
     @Test
-    fun getSchedule_onlineError_withCachedData_emitsCachedSuccess() = runBlocking {
-        val api = FakeApiService(shouldFail = true)
-        val lessonDao = FakeLessonDao().apply {
-            storage.add(
-                LessonEntity(
-                    id = 101,
-                    date = "2026-11-09",
-                    pairNumber = 1,
-                    kind = "Лекция",
-                    disciplineId = 1,
-                    discipline = "Математический анализ",
-                    room = "214",
-                    subgroup = null,
-                    groupId = 1,
-                    groupName = "2ИВТ_ТИИ1",
-                    course = 2,
-                    teachers = "Петров А.С.",
-                    cancellationReason = null,
-                ),
-            )
-        }
-        val pairDao = FakePairDao()
-        val weekDao = FakeWeekDao()
-        val repository = ScheduleRepositoryImpl(api, lessonDao, pairDao, weekDao)
+    fun getSchedule_onlineError_withCachedData_keepsSnapshotAndEmitsNetworkError() = runBlocking {
+        val api = FakeApiService()
+        val repository = ScheduleRepositoryImpl(api, FakeLessonDao(), FakePairDao(), FakeWeekDao(),
+            CachedContent(InMemoryContentCacheDao(), SchedionJson))
+        repository.getSchedule(week = "2026-11-09", group = 1).toList()
+        api.shouldFail = true
+        val states = repository.getSchedule(week = "2026-11-09", group = 1).toList()
+        assertTrue(states.first() is Resource.Loading)
+        val cached = states[1] as Resource.Success
+        assertTrue(cached.isFromCache)
+        assertTrue(checkNotNull(cached.savedAt) > 0)
+        assertEquals(101, cached.data.days.first().lessons.first().id)
+        assertTrue((states.last() as Resource.Error).cause is IOException)
+    }
 
-        val states = repository.getSchedule().toList()
+    @Test
+    fun getSchedule_offline_doesNotShowAnotherGroupOrWeek() = runBlocking {
+        val api = FakeApiService()
+        val repository = ScheduleRepositoryImpl(api, FakeLessonDao(), FakePairDao(), FakeWeekDao(),
+            CachedContent(InMemoryContentCacheDao(), SchedionJson))
+        repository.getSchedule(week = "2026-11-09", group = 1).toList()
+        api.shouldFail = true
+        val otherGroup = repository.getSchedule(week = "2026-11-09", group = 2).toList()
+        val otherWeek = repository.getSchedule(week = "2026-11-16", group = 1).toList()
+        assertTrue(otherGroup.none { it is Resource.Success })
+        assertTrue(otherWeek.none { it is Resource.Success })
+    }
 
-        assertEquals(2, states.size)
-        assertTrue(states[0] is Resource.Loading)
-        assertTrue(states[1] is Resource.Success)
+    @Test
+    fun directoryTimesRestoreFromCacheAndOnlyAdvanceForDirectoriesInFreshResponse() = runBlocking {
+        val groups = listOf(GroupDto(id = 1, name = "1ИВТ", course = 1))
+        val teachers = listOf(TeacherDto(id = 2, shortName = "Иванов И. И."))
+        val api = FakeApiService(filters = ScheduleFiltersDto(groups, teachers, emptyList()))
+        val cacheDao = InMemoryContentCacheDao()
+        val week = "2026-11-09"
+        val snapshotTime = 1_700_000_000_000L
+        val snapshot = api.getSchedule(week, 1, null, null)
+        cacheDao.put(ContentCacheEntity("schedule:$week:group=1:teacher=null",
+            SchedionJson.encodeToString(ScheduleWeekDto.serializer(), snapshot), snapshotTime))
+        api.shouldFail = true
+        val repository = ScheduleRepositoryImpl(api, FakeLessonDao(), FakePairDao(), FakeWeekDao(),
+            CachedContent(cacheDao, SchedionJson))
 
-        val success = states[1] as Resource.Success
-        assertTrue(success.data.isFromCache)
+        repository.getSchedule(week = week, group = 1).toList()
+        repository.getSchedule(week = week, group = 2).toList()
+        assertEquals(groups, repository.availableGroups.value)
+        assertEquals(teachers, repository.availableTeachers.value)
+        assertEquals(snapshotTime, repository.groupsSavedAt.value)
+        assertEquals(snapshotTime, repository.teachersSavedAt.value)
+
+        api.shouldFail = false
+        api.filters = ScheduleFiltersDto(emptyList(), teachers, emptyList())
+        val fresh = repository.getSchedule(week = week, group = 2).toList().last() as Resource.Success
+        assertEquals(snapshotTime, repository.groupsSavedAt.value)
+        assertEquals(fresh.savedAt, repository.teachersSavedAt.value)
+
+        api.shouldFail = true
+        repository.getSchedule(week = week, group = 1).toList()
+        assertEquals(fresh.savedAt, repository.teachersSavedAt.value)
     }
 
     @Test
@@ -200,7 +233,7 @@ class ScheduleRepositoryTest {
         val lessonDao = FakeLessonDao()
         val pairDao = FakePairDao()
         val weekDao = FakeWeekDao()
-        val repository = ScheduleRepositoryImpl(api, lessonDao, pairDao, weekDao)
+        val repository = ScheduleRepositoryImpl(api, lessonDao, pairDao, weekDao, CachedContent(InMemoryContentCacheDao(), SchedionJson))
 
         val states = repository.getSchedule().toList()
 
@@ -215,7 +248,7 @@ class ScheduleRepositoryTest {
         val lessonDao = FakeLessonDao()
         val pairDao = FakePairDao()
         val weekDao = FakeWeekDao()
-        val repository = ScheduleRepositoryImpl(api, lessonDao, pairDao, weekDao)
+        val repository = ScheduleRepositoryImpl(api, lessonDao, pairDao, weekDao, CachedContent(InMemoryContentCacheDao(), SchedionJson))
 
         val states = repository.getWeeks().toList()
 
