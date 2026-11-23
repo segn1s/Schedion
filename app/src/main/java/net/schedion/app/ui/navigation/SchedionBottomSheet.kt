@@ -52,6 +52,7 @@ private const val PanelMaxHeightFraction = 0.85f
  *
  * @param visibleState состояние показа шита: хост держит шит в композиции, пока проигрывается
  * анимация закрытия, и убирает его после её завершения.
+ * @param scrollContent включает прокрутку панели, если содержимое не управляет ей само.
  */
 @Composable
 internal fun SchedionBottomSheet(
@@ -59,6 +60,7 @@ internal fun SchedionBottomSheet(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     tall: Boolean = false,
+    scrollContent: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val sheetTitle = stringResource(if (tall) R.string.schedule_picker_title else R.string.schedule_lesson_details)
@@ -124,10 +126,9 @@ internal fun SchedionBottomSheet(
             ) {
                 Spacer(Modifier.width(D.SheetHandleWidth).height(D.Xs).background(C.Handle, CircleShape))
                 Spacer(Modifier.height(if (tall) D.M else D.Sm))
+                val scrollModifier = if (scrollContent) Modifier.verticalScroll(rememberScrollState()) else Modifier
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
+                    modifier = Modifier.fillMaxWidth().then(scrollModifier),
                     content = content,
                 )
             }

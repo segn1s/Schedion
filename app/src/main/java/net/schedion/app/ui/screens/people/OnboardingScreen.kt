@@ -43,9 +43,13 @@ internal fun OnboardingScreen(
     onTeacher: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val state by viewModel.contentState.collectAsState()
-    val groups by viewModel.availableGroups.collectAsState()
-    val teachers by viewModel.availableTeachers.collectAsState()
+    val state by viewModel.directoryState.collectAsState()
+    val knownGroups by viewModel.availableGroups.collectAsState()
+    val knownTeachers by viewModel.availableTeachers.collectAsState()
+    val groups = state.data?.groups ?: knownGroups
+    val teachers = state.data?.teachers ?: knownTeachers
+    val showGroups = state.data != null || groups.isNotEmpty()
+    val showTeachers = state.data != null || teachers.isNotEmpty()
     var query by remember { mutableStateOf("") }
 
     val filteredGroups = remember(groups, query) {
@@ -84,9 +88,9 @@ internal fun OnboardingScreen(
                 SearchField(value = query, onValueChange = { query = it }, placeholder = stringResource(R.string.search_onboarding_query_hint))
                 Spacer(Modifier.height(D.Page))
 
-                DirectoryStatus(state, groups.isNotEmpty() || teachers.isNotEmpty(), viewModel::refreshSchedule)
-                PeopleHeading(stringResource(R.string.search_groups_count, filteredGroups.size))
-                if (filteredGroups.isEmpty() && !state.isRefreshing) {
+                DirectoryStatus(state, onRetry = { viewModel.refreshDirectories(refreshAllWeeks = true) })
+                if (showGroups) PeopleHeading(stringResource(R.string.search_groups_count, filteredGroups.size))
+                if (showGroups && filteredGroups.isEmpty()) {
                     Text(stringResource(R.string.search_groups_empty), color = C.Muted, style = T.Body)
                 } else {
                     filteredGroups.groupedByCourse().forEach { (course, courseGroups) ->
@@ -114,10 +118,10 @@ internal fun OnboardingScreen(
                 }
 
                 Spacer(Modifier.height(D.S))
-                PeopleHeading(stringResource(R.string.search_teachers_count, filteredTeachers.size))
-                if (filteredTeachers.isEmpty() && !state.isRefreshing) {
+                if (showTeachers) PeopleHeading(stringResource(R.string.search_teachers_count, filteredTeachers.size))
+                if (showTeachers && filteredTeachers.isEmpty()) {
                     Text(stringResource(R.string.search_teachers_empty), color = C.Muted, style = T.Body)
-                } else {
+                } else if (filteredTeachers.isNotEmpty()) {
                     MockCard {
                         filteredTeachers.forEachIndexed { index, teacher ->
                             if (index > 0) MockDivider()

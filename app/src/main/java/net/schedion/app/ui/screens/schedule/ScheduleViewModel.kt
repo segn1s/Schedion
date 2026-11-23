@@ -15,6 +15,7 @@ import net.schedion.app.core.Resource
 import net.schedion.app.data.local.SavedSourceStore
 import net.schedion.app.data.mapper.toFavorite
 import net.schedion.app.data.remote.dto.GroupDto
+import net.schedion.app.data.remote.dto.ScheduleFiltersDto
 import net.schedion.app.data.remote.dto.TeacherDto
 import net.schedion.app.data.repository.FavoritesRepository
 import net.schedion.app.data.repository.ScheduleRepository
@@ -48,6 +49,9 @@ class ScheduleViewModel @Inject constructor(
     val availableTeachers: StateFlow<List<TeacherDto>> = repository.availableTeachers
     internal val groupsSavedAt: StateFlow<Long?> = repository.groupsSavedAt
     internal val teachersSavedAt: StateFlow<Long?> = repository.teachersSavedAt
+    private val _directoryState = MutableStateFlow(ContentState<ScheduleFiltersDto>())
+    internal val directoryState = _directoryState.asStateFlow()
+    private var directoryJob: Job? = null
 
     /** Избранные группы и преподаватели в сохранённом порядке. */
     val favorites: StateFlow<List<FavoriteSource>> = favoritesRepository.favorites
@@ -92,11 +96,23 @@ class ScheduleViewModel @Inject constructor(
     val searchTab: StateFlow<Int> = _searchTab.asStateFlow()
 
     init {
+        refreshDirectories(refreshAllWeeks = false)
         viewModelScope.launch {
             val initialSource = favoritesRepository.getFirstFavorite() ?: savedSource
             initialSource?.let(::setSelectedSource)
             _hasInitialSource.value = initialSource != null
             loadSchedule()
+        }
+    }
+
+    internal fun refreshDirectories(refreshAllWeeks: Boolean) {
+        directoryJob?.cancel()
+        directoryJob = viewModelScope.launch {
+            repository.getDirectories(refreshAllWeeks).collect { result ->
+                val current = _directoryState.value
+                if (result is Resource.Success && result.isFromCache && current.data != null) return@collect
+                _directoryState.value = current.accept(result)
+            }
         }
     }
 

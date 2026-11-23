@@ -5,11 +5,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,10 +44,14 @@ internal fun SearchScreen(
 ) {
     val query by viewModel.searchQuery.collectAsState()
     val tabIndex by viewModel.searchTab.collectAsState()
-    val state by viewModel.contentState.collectAsState()
-    val groups by viewModel.availableGroups.collectAsState()
-    val teachers by viewModel.availableTeachers.collectAsState()
+    val state by viewModel.directoryState.collectAsState()
+    val knownGroups by viewModel.availableGroups.collectAsState()
+    val knownTeachers by viewModel.availableTeachers.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
+    val groups = state.data?.groups ?: knownGroups
+    val teachers = state.data?.teachers ?: knownTeachers
+    val showGroups = state.data != null || groups.isNotEmpty()
+    val showTeachers = state.data != null || teachers.isNotEmpty()
 
     val filteredGroups = remember(groups, query) {
         if (query.isBlank()) groups
@@ -63,107 +68,117 @@ internal fun SearchScreen(
         }
     }
 
-    ScreenColumn(modifier) {
-        Text(stringResource(R.string.search_title), style = T.Heading)
-        Spacer(Modifier.height(D.L))
-
-        if (isOffline) {
-            val directorySavedAt = if (tabIndex == 0) viewModel.groupsSavedAt else viewModel.teachersSavedAt
-            OfflineBanner(savedAt = directorySavedAt.collectAsState().value)
+    PullToRefreshBox(
+        isRefreshing = state.isRefreshing,
+        onRefresh = { viewModel.refreshDirectories(refreshAllWeeks = true) },
+        modifier = modifier.fillMaxSize(),
+    ) {
+        ScreenColumn {
+            Text(stringResource(R.string.search_title), style = T.Heading)
             Spacer(Modifier.height(D.L))
-        }
 
-        SearchField(
-            value = query,
-            onValueChange = { viewModel.setSearchQuery(it) },
-            placeholder = stringResource(R.string.search_source_hint),
-        )
-        Spacer(Modifier.height(D.L))
+            if (isOffline) {
+                val directorySavedAt = if (tabIndex == 0) viewModel.groupsSavedAt else viewModel.teachersSavedAt
+                OfflineBanner(savedAt = directorySavedAt.collectAsState().value)
+                Spacer(Modifier.height(D.L))
+            }
 
-        Segments(
-            labels = listOf(
-                stringResource(R.string.search_groups_count, filteredGroups.size),
-                stringResource(R.string.search_teachers_count, filteredTeachers.size),
-            ),
-            active = tabIndex,
-            onSelect = { viewModel.setSearchTab(it) },
-        )
-        Spacer(Modifier.height(D.L))
+            SearchField(
+                value = query,
+                onValueChange = { viewModel.setSearchQuery(it) },
+                placeholder = stringResource(R.string.search_source_hint),
+            )
+            Spacer(Modifier.height(D.L))
 
-        DirectoryStatus(state, groups.isNotEmpty() || teachers.isNotEmpty(), viewModel::refreshSchedule,
-            showOfflineBanner = false)
-        if (tabIndex == 0) {
-            PeopleHeading(stringResource(R.string.search_groups))
-            if (filteredGroups.isEmpty() && !state.isRefreshing) {
-                Text(stringResource(R.string.search_groups_empty), color = C.Muted, style = T.Body)
-            } else {
-                MockCard {
-                    filteredGroups.favoritesFirst(favorites, FavoriteKind.Group) { it.id }
-                        .forEachIndexed { index, group ->
-                        if (index > 0) MockDivider()
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.selectGroup(group)
-                                    onGroup()
+            Segments(
+                labels = listOf(
+                    if (showGroups) stringResource(R.string.search_groups_count, filteredGroups.size)
+                    else stringResource(R.string.search_groups),
+                    if (showTeachers) stringResource(R.string.search_teachers_count, filteredTeachers.size)
+                    else stringResource(R.string.search_teachers),
+                ),
+                active = tabIndex,
+                onSelect = { viewModel.setSearchTab(it) },
+            )
+            Spacer(Modifier.height(D.L))
+
+            DirectoryStatus(
+                state = state,
+                showOfflineBanner = false,
+            )
+            if (tabIndex == 0 && showGroups) {
+                PeopleHeading(stringResource(R.string.search_groups))
+                if (filteredGroups.isEmpty()) {
+                    Text(stringResource(R.string.search_groups_empty), color = C.Muted, style = T.Body)
+                } else {
+                    MockCard {
+                        filteredGroups.favoritesFirst(favorites, FavoriteKind.Group) { it.id }
+                            .forEachIndexed { index, group ->
+                            if (index > 0) MockDivider()
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.selectGroup(group)
+                                        onGroup()
+                                    }
+                                    .padding(start = D.L, end = D.Xs, top = D.Sm, bottom = D.Sm),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(D.Page),
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(group.name, style = T.Title)
+                                    Text(
+                                        group.description ?: stringResource(R.string.common_course, group.course),
+                                        color = C.Muted,
+                                        style = T.Label,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
                                 }
-                                .padding(start = D.L, end = D.Xs, top = D.Sm, bottom = D.Sm),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(D.Page),
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(group.name, style = T.Title)
-                                Text(
-                                    group.description ?: stringResource(R.string.common_course, group.course),
-                                    color = C.Muted,
-                                    style = T.Label,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                FavoriteStar(
+                                    favorite = favorites.contains(FavoriteKind.Group, group.id),
+                                    onToggle = { viewModel.toggleGroupFavorite(group) },
                                 )
                             }
-                            FavoriteStar(
-                                favorite = favorites.contains(FavoriteKind.Group, group.id),
-                                onToggle = { viewModel.toggleGroupFavorite(group) },
-                            )
                         }
                     }
                 }
-            }
-        } else {
-            PeopleHeading(stringResource(R.string.search_teachers))
-            if (filteredTeachers.isEmpty() && !state.isRefreshing) {
-                Text(stringResource(R.string.search_teachers_empty), color = C.Muted, style = T.Body)
-            } else {
-                MockCard {
-                    filteredTeachers.favoritesFirst(favorites, FavoriteKind.Teacher) { it.id }
-                        .forEachIndexed { index, teacher ->
-                        if (index > 0) MockDivider()
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.selectTeacher(teacher)
-                                    onGroup()
+            } else if (tabIndex == 1 && showTeachers) {
+                PeopleHeading(stringResource(R.string.search_teachers))
+                if (filteredTeachers.isEmpty()) {
+                    Text(stringResource(R.string.search_teachers_empty), color = C.Muted, style = T.Body)
+                } else {
+                    MockCard {
+                        filteredTeachers.favoritesFirst(favorites, FavoriteKind.Teacher) { it.id }
+                            .forEachIndexed { index, teacher ->
+                            if (index > 0) MockDivider()
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.selectTeacher(teacher)
+                                        onGroup()
+                                    }
+                                    .padding(start = D.L, end = D.Xs, top = D.Sm, bottom = D.Sm),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(D.Page),
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(teacher.shortName, style = T.Title)
+                                    Text(
+                                        stringResource(R.string.common_teacher),
+                                        color = C.Muted,
+                                        style = T.Label,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
                                 }
-                                .padding(start = D.L, end = D.Xs, top = D.Sm, bottom = D.Sm),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(D.Page),
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(teacher.shortName, style = T.Title)
-                                Text(
-                                    stringResource(R.string.common_teacher),
-                                    color = C.Muted,
-                                    style = T.Label,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                FavoriteStar(
+                                    favorite = favorites.contains(FavoriteKind.Teacher, teacher.id),
+                                    onToggle = { viewModel.toggleTeacherFavorite(teacher) },
                                 )
                             }
-                            FavoriteStar(
-                                favorite = favorites.contains(FavoriteKind.Teacher, teacher.id),
-                                onToggle = { viewModel.toggleTeacherFavorite(teacher) },
-                            )
                         }
                     }
                 }

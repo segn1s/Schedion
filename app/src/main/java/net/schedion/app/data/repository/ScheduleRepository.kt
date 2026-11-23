@@ -3,6 +3,9 @@ package net.schedion.app.data.repository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import net.schedion.app.data.remote.dto.ScheduleWeekDto
 import net.schedion.app.data.remote.dto.WeekListDto
 import kotlinx.coroutines.flow.Flow
@@ -11,7 +14,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.serialization.Serializable
 import net.schedion.app.core.Resource
 import net.schedion.app.data.local.dao.LessonDao
 import net.schedion.app.data.local.dao.PairDao
@@ -21,6 +26,7 @@ import net.schedion.app.data.mapper.toEntity
 import net.schedion.app.data.remote.SchedionApiService
 import net.schedion.app.data.remote.dto.GroupDto
 import net.schedion.app.data.remote.dto.HomeContentDto
+import net.schedion.app.data.remote.dto.ScheduleFiltersDto
 import net.schedion.app.data.remote.dto.TeacherDto
 import net.schedion.app.domain.model.LessonItem
 import net.schedion.app.domain.model.LessonStatus
@@ -30,6 +36,7 @@ import net.schedion.app.domain.model.ScheduleWeek
 import net.schedion.app.domain.model.WeekInfo
 import java.time.LocalDate
 import java.time.LocalTime
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,6 +52,9 @@ interface ScheduleRepository {
         group: Int? = null,
         teacher: Int? = null,
     ): Flow<Resource<ScheduleWeek>>
+
+    /** Загружает справочники независимо от выбранного расписания. */
+    fun getDirectories(refreshAllWeeks: Boolean = false): Flow<Resource<ScheduleFiltersDto>>
 
     fun getPairs(): Flow<Resource<List<PairItem>>>
 
@@ -85,13 +95,13 @@ class ScheduleRepositoryImpl @Inject constructor(
             val key = "schedule:$resolvedWeek:group=$group:teacher=$teacher"
             val times = loadPairTimes()
             cache.read(key, ScheduleWeekDto.serializer())?.let { (snapshot, savedAt) ->
-                updateDirectories(snapshot, savedAt)
+                updateDirectories(snapshot.filters, savedAt)
                 emit(Resource.Success(scheduleWeek(snapshot, times), true, savedAt))
             }
             val response = apiService.getSchedule(week = resolvedWeek, group = group, teacher = teacher)
             lessonDao.upsertAll(response.lessons.map { it.toEntity() })
             val savedAt = cache.save(key, response, ScheduleWeekDto.serializer())
-            updateDirectories(response, savedAt)
+            updateDirectories(response.filters, savedAt)
             emit(Resource.Success(scheduleWeek(response, times), false, savedAt))
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -100,14 +110,63 @@ class ScheduleRepositoryImpl @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
-    private fun updateDirectories(response: ScheduleWeekDto, savedAt: Long) {
-        if (response.filters.groups.isNotEmpty()) {
-            _availableGroups.update { mergeGroups(it, response.filters.groups) }
+    override fun getDirectories(refreshAllWeeks: Boolean): Flow<Resource<ScheduleFiltersDto>> =
+        cache.request(DirectoryCacheKey, ScheduleFiltersDto.serializer()) {
+            val current = apiService.getSchedule()
+            val otherWeeks = apiService.getWeeks().items.map { it.start }
+                .filterNot { it == current.weekStart }.distinct().sortedDescending()
+            val filters = if (otherWeeks.isEmpty()) listOf(current.filters)
+            else listOf(current.filters, loadOtherWeekDirectories(otherWeeks, refreshAllWeeks))
+            mergeDirectoryFilters(filters)
+        }.onEach { result ->
+            if (result is Resource.Success) {
+                updateDirectories(result.data, checkNotNull(result.savedAt), preferIncoming = !result.isFromCache)
+            }
+        }.flowOn(Dispatchers.IO)
+
+    /** Повторно использует снимок остальных недель при автоматической синхронизации. */
+    private suspend fun loadOtherWeekDirectories(weeks: List<String>, refreshAllWeeks: Boolean): ScheduleFiltersDto {
+        if (!refreshAllWeeks) {
+            val cached = cache.read(OtherWeeksCacheKey, WeekDirectories.serializer())
+            if (cached != null) {
+                val (snapshot, savedAt) = cached
+                if (snapshot.weeks == weeks && System.currentTimeMillis() - savedAt in 0 until OtherWeeksMaxAgeMillis) {
+                    return snapshot.filters
+                }
+            }
+        }
+
+        val filters = coroutineScope {
+            weeks.chunked(DirectoryRequestBatchSize).flatMap { batch ->
+                batch.map { week -> async { apiService.getSchedule(week = week).filters } }.awaitAll()
+            }
+        }
+        val merged = mergeDirectoryFilters(filters)
+        cache.save(OtherWeeksCacheKey, WeekDirectories(weeks, merged), WeekDirectories.serializer())
+        return merged
+    }
+
+    private fun mergeDirectoryFilters(filters: List<ScheduleFiltersDto>) = ScheduleFiltersDto(
+        groups = filters.flatMap { it.groups }.distinctBy { it.id }.sortedWith(compareBy({ it.course }, { it.name })),
+        teachers = filters.flatMap { it.teachers }.distinctBy { it.id }.sortedBy { it.shortName },
+        courses = filters.flatMap { it.courses }.distinct().sorted(),
+    )
+
+    @Serializable
+    private data class WeekDirectories(val weeks: List<String>, val filters: ScheduleFiltersDto)
+
+    /** Дополняет списки записями из других недель и обновляет записи из свежего справочника. */
+    private fun updateDirectories(filters: ScheduleFiltersDto, savedAt: Long, preferIncoming: Boolean = false) {
+        if (filters.groups.isNotEmpty()) {
+            _availableGroups.update { known ->
+                mergeDirectory(known, filters.groups, preferIncoming) { it.id }
+                    .sortedWith(compareBy({ it.course }, { it.name }))
+            }
             _groupsSavedAt.update { maxOf(it ?: savedAt, savedAt) }
         }
-        if (response.filters.teachers.isNotEmpty()) {
+        if (filters.teachers.isNotEmpty()) {
             _availableTeachers.update { known ->
-                (known + response.filters.teachers).distinctBy { it.id }.sortedBy { it.shortName }
+                mergeDirectory(known, filters.teachers, preferIncoming) { it.id }.sortedBy { it.shortName }
             }
             _teachersSavedAt.update { maxOf(it ?: savedAt, savedAt) }
         }
@@ -181,16 +240,9 @@ class ScheduleRepositoryImpl @Inject constructor(
         }
     }
 
-    /**
-     * Объединяет группы недели с уже известными.
-     *
-     * Сервер отдаёт в фильтрах только группы с занятиями на выбранной неделе, поэтому без
-     * объединения часть групп периодически пропадала бы из общего списка.
-     */
-    private fun mergeGroups(known: List<GroupDto>, fresh: List<GroupDto>): List<GroupDto> =
-        (known + fresh)
-            .distinctBy { it.id }
-            .sortedWith(compareBy({ it.course }, { it.name }))
+    /** Сохраняет записи из других недель, выбирая источник данных для совпадающих id. */
+    private fun <T> mergeDirectory(known: List<T>, incoming: List<T>, preferIncoming: Boolean, id: (T) -> Int): List<T> =
+        (if (preferIncoming) incoming + known else known + incoming).distinctBy(id)
 
     private suspend fun resolveCurrentWeek(): String {
         cachedDefaultWeek?.let { return it }
@@ -286,6 +338,11 @@ class ScheduleRepositoryImpl @Inject constructor(
     }
 
     companion object {
+        private const val DirectoryCacheKey = "schedule:directories"
+        private const val OtherWeeksCacheKey = "schedule:directories:other-weeks"
+        private const val DirectoryRequestBatchSize = 3
+        private val OtherWeeksMaxAgeMillis = TimeUnit.HOURS.toMillis(24)
+
         private val defaultPairTimes = mapOf(
             1 to PairItem(1, "08:30", "09:50"),
             2 to PairItem(2, "10:00", "11:20"),
