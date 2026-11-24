@@ -1,6 +1,8 @@
 package net.schedion.app.ui.screens.people
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,14 +18,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import net.schedion.app.R
 import net.schedion.app.domain.model.FavoriteKind
-import net.schedion.app.ui.components.MockButton
-import net.schedion.app.ui.components.MockDivider
+import net.schedion.app.ui.components.SchedionButton
+import net.schedion.app.ui.components.SchedionDivider
 import net.schedion.app.ui.components.DirectoryStatus
 import net.schedion.app.ui.components.PeopleHeading
 import net.schedion.app.ui.components.PickerFavorite
@@ -52,6 +57,19 @@ internal fun SchedulePickerSheet(
     val showGroups = state.data != null || groups.isNotEmpty()
     val showTeachers = state.data != null || teachers.isNotEmpty()
     var query by remember { mutableStateOf("") }
+    // Индикатор обновления держится не меньше трёх секунд, как и на расписании
+    var minRefreshing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val refresh: () -> Unit = {
+        if (!minRefreshing) {
+            minRefreshing = true
+            viewModel.refreshDirectories(refreshAllWeeks = true)
+            scope.launch {
+                delay(3000)
+                minRefreshing = false
+            }
+        }
+    }
 
     val filteredGroups = remember(groups, query) {
         if (query.isBlank()) groups
@@ -69,11 +87,17 @@ internal fun SchedulePickerSheet(
     }
 
     PullToRefreshBox(
-        isRefreshing = state.isRefreshing,
-        onRefresh = { viewModel.refreshDirectories(refreshAllWeeks = true) },
+        isRefreshing = minRefreshing || state.isRefreshing,
+        onRefresh = refresh,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+        Box(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = D.Button + D.Button + D.Sm),
+        ) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = D.Page),
                 horizontalArrangement = Arrangement.spacedBy(D.Sm),
@@ -170,12 +194,24 @@ internal fun SchedulePickerSheet(
                     }
                 }
             }
-            MockDivider()
-            MockButton(
-                stringResource(R.string.favorites_edit),
-                Modifier.fillMaxWidth().padding(horizontal = D.Page, vertical = D.M),
-                onClick = onFavorites,
-            )
+        }
+
+            // Кнопка всегда видна поверх списка, а не только в его конце
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(C.Sheet)
+                    .padding(horizontal = D.Page, vertical = D.M),
+            ) {
+                SchedionDivider()
+                Spacer(Modifier.height(D.M))
+                SchedionButton(
+                    stringResource(R.string.favorites_edit),
+                    Modifier.fillMaxWidth(),
+                    onClick = onFavorites,
+                )
+            }
         }
     }
 }

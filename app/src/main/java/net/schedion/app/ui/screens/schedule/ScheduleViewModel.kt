@@ -3,14 +3,21 @@ package net.schedion.app.ui.screens.schedule
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+import javax.inject.Inject
 import kotlinx.coroutines.Job
-import net.schedion.app.core.ContentState
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import net.schedion.app.core.ContentState
 import net.schedion.app.core.Resource
 import net.schedion.app.data.local.SavedSourceStore
 import net.schedion.app.data.mapper.toFavorite
@@ -19,17 +26,22 @@ import net.schedion.app.data.remote.dto.ScheduleFiltersDto
 import net.schedion.app.data.remote.dto.TeacherDto
 import net.schedion.app.data.repository.FavoritesRepository
 import net.schedion.app.data.repository.ScheduleRepository
+import net.schedion.app.domain.model.BreakStatus
+import net.schedion.app.domain.model.CurrentPairStatus
 import net.schedion.app.domain.model.FavoriteKind
 import net.schedion.app.domain.model.FavoriteSource
 import net.schedion.app.domain.model.LessonItem
+import net.schedion.app.domain.model.LessonStatus
 import net.schedion.app.domain.model.ScheduleWeek
-import javax.inject.Inject
+import net.schedion.app.domain.model.WeekInfo
+
+private val TimeFormat = DateTimeFormatter.ofPattern("HH:mm[:ss]")
 
 /**
- * ViewModel расписания и выбора источников.
+ * ViewModel расписания занятий.
  *
- * Связывает UI со слоем данных [ScheduleRepository], обрабатывает выбор групп и преподавателей,
- * избранное, реактивный поиск, переключение дней/режимов и обновление данных.
+ * Связывает UI со слоем данных [ScheduleRepository], обрабатывает отображение расписания,
+ * выбор дня/режима и статус текущей пары с переменой по времени звонков (#38).
  */
 @HiltViewModel
 class ScheduleViewModel @Inject constructor(
@@ -88,20 +100,41 @@ class ScheduleViewModel @Inject constructor(
     private val _selectedLesson = MutableStateFlow<LessonItem?>(null)
     val selectedLesson: StateFlow<LessonItem?> = _selectedLesson.asStateFlow()
 
-    // Поиск
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+    private val _weeks = MutableStateFlow<List<WeekInfo>>(emptyList())
 
-    private val _searchTab = MutableStateFlow(0) // 0 - Groups, 1 - Teachers
-    val searchTab: StateFlow<Int> = _searchTab.asStateFlow()
+    /** Учебные недели семестра по возрастанию даты начала. */
+    val weeks: StateFlow<List<WeekInfo>> = _weeks.asStateFlow()
+    private var weeksJob: Job? = null
+
+    private val favoritePromptEvents = Channel<FavoriteSource>(Channel.CONFLATED)
+
+    /** Предложения добавить только что выбранный источник в избранное. */
+    val favoritePrompts = favoritePromptEvents.receiveAsFlow()
+
+    /** Статус текущей пары (#38). */
+    private val _currentPairStatus = MutableStateFlow<CurrentPairStatus?>(null)
+    val currentPairStatus: StateFlow<CurrentPairStatus?> = _currentPairStatus.asStateFlow()
+
+    /** Статус перемены перед следующей парой (#38). */
+    private val _breakStatus = MutableStateFlow<BreakStatus?>(null)
+    val breakStatus: StateFlow<BreakStatus?> = _breakStatus.asStateFlow()
 
     init {
         refreshDirectories(refreshAllWeeks = false)
+        refreshWeeks()
         viewModelScope.launch {
             val initialSource = favoritesRepository.getFirstFavorite() ?: savedSource
             initialSource?.let(::setSelectedSource)
             _hasInitialSource.value = initialSource != null
             loadSchedule()
+        }
+
+        // Периодическое обновление статуса текущей пары и перемены каждую минуту (#38)
+        viewModelScope.launch {
+            while (isActive) {
+                updateTimeStatuses()
+                delay(30_000)
+            }
         }
     }
 
@@ -116,18 +149,35 @@ class ScheduleViewModel @Inject constructor(
         }
     }
 
+    /** Загружает список учебных недель для переключения недель в режиме «Неделя». */
+    internal fun refreshWeeks() {
+        weeksJob?.cancel()
+        weeksJob = viewModelScope.launch {
+            repository.getWeeks().collect { result ->
+                if (result is Resource.Success) _weeks.value = result.data.sortedBy { it.startDate }
+            }
+        }
+    }
+
     fun loadSchedule() {
         scheduleJob?.cancel()
         scheduleJob = viewModelScope.launch {
-            repository.getSchedule(week = _currentWeek.value, group = _selectedGroup.value?.id,
-                teacher = _selectedTeacher.value?.id).collect { resource ->
+            repository.getSchedule(
+                week = _currentWeek.value,
+                group = _selectedGroup.value?.id,
+                teacher = _selectedTeacher.value?.id,
+            ).collect { resource ->
                 if (resource is Resource.Success && resource.isFromCache && _contentState.value.data != null) return@collect
                 _contentState.value = _contentState.value.accept(resource)
                 _scheduleState.value = _contentState.value.resource
                 _isRefreshing.value = _contentState.value.isRefreshing
                 if (resource is Resource.Success) {
-                    _selectedDayIndex.value = _selectedDayIndex.value.coerceIn(0, (resource.data.days.size - 1).coerceAtLeast(0))
+                    _selectedDayIndex.value = _selectedDayIndex.value.coerceIn(
+                        0,
+                        (resource.data.days.size - 1).coerceAtLeast(0),
+                    )
                 }
+                updateTimeStatuses()
             }
         }
     }
@@ -136,6 +186,8 @@ class ScheduleViewModel @Inject constructor(
         _contentState.value = ContentState()
         _scheduleState.value = Resource.Loading
         _selectedDayIndex.value = 0
+        _currentPairStatus.value = null
+        _breakStatus.value = null
     }
 
     fun refreshSchedule() {
@@ -146,7 +198,9 @@ class ScheduleViewModel @Inject constructor(
         if (_selectedGroup.value?.id != group.id || _selectedTeacher.value != null) clearShownSchedule()
         _selectedGroup.value = group
         _selectedTeacher.value = null
-        savedSourceStore.save(group.toFavorite())
+        val favorite = group.toFavorite()
+        savedSourceStore.save(favorite)
+        promptFavoriteIfNeeded(favorite)
         loadSchedule()
     }
 
@@ -154,7 +208,37 @@ class ScheduleViewModel @Inject constructor(
         if (_selectedTeacher.value?.id != teacher.id || _selectedGroup.value != null) clearShownSchedule()
         _selectedTeacher.value = teacher
         _selectedGroup.value = null
-        savedSourceStore.save(teacher.toFavorite())
+        val favorite = teacher.toFavorite()
+        savedSourceStore.save(favorite)
+        promptFavoriteIfNeeded(favorite)
+        loadSchedule()
+    }
+
+    /** Предлагает добавить в избранное источник, которого там ещё нет. */
+    private fun promptFavoriteIfNeeded(favorite: FavoriteSource) {
+        val saved = favoritesRepository.favorites.value
+        if (saved.none { it.kind == favorite.kind && it.id == favorite.id }) {
+            favoritePromptEvents.trySend(favorite)
+        }
+    }
+
+    /** Добавляет источник в избранное после подтверждения в диалоге. */
+    fun addFavorite(favorite: FavoriteSource) {
+        viewModelScope.launch {
+            val saved = favoritesRepository.favorites.value
+            if (saved.none { it.kind == favorite.kind && it.id == favorite.id } &&
+                !favoritesRepository.toggle(favorite)
+            ) {
+                favoritesLimitEvents.trySend(Unit)
+            }
+        }
+    }
+
+    /** Переключает расписание на выбранную учебную неделю. */
+    fun selectWeek(week: WeekInfo) {
+        if (_currentWeek.value == week.startDate) return
+        _currentWeek.value = week.startDate
+        clearShownSchedule()
         loadSchedule()
     }
 
@@ -167,23 +251,95 @@ class ScheduleViewModel @Inject constructor(
     }
 
     fun selectLesson(lesson: LessonItem?) {
-        _selectedLesson.value = lesson
+        _selectedLesson.value = lesson?.let(::withFreshStatus)
     }
 
-    fun setSearchQuery(query: String) {
-        _searchQuery.value = query
+    /** Пересчитывает статус занятия по текущему времени: он в расписании не обновляется сам. */
+    private fun withFreshStatus(lesson: LessonItem, now: LocalTime = LocalTime.now()): LessonItem {
+        if (lesson.status == LessonStatus.Cancelled) return lesson
+        val today = LocalDate.now().toString()
+        val status = when {
+            lesson.date < today -> LessonStatus.Past
+            lesson.date > today -> LessonStatus.Upcoming
+            else -> {
+                val start = parseTimeOrNull(lesson.timeStart)
+                val end = parseTimeOrNull(lesson.timeEnd)
+                when {
+                    start == null || end == null -> lesson.status
+                    now.isBefore(start) -> LessonStatus.Upcoming
+                    now.isAfter(end) -> LessonStatus.Past
+                    else -> LessonStatus.Current
+                }
+            }
+        }
+        return lesson.copy(status = status)
     }
 
-    fun setSearchTab(tabIndex: Int) {
-        _searchTab.value = tabIndex
+    /**
+     * Вычисляет остаток времени текущей пары и статус перемены (#38).
+     *
+     * Расчёт производится по времени звонков занятий и локальному времени устройства [LocalTime.now].
+     * Таймзона сервера из GET /pairs сейчас не используется и расчёт опирается на системные часы.
+     */
+    fun updateTimeStatuses(now: LocalTime = LocalTime.now()) {
+        val schedule = _contentState.value.data
+        val today = schedule?.days?.firstOrNull { it.isToday }
+        if (today == null || today.lessons.isEmpty()) {
+            _currentPairStatus.value = null
+            _breakStatus.value = null
+            return
+        }
+
+        var activePair: CurrentPairStatus? = null
+        var activeBreak: BreakStatus? = null
+
+        val lessons = today.lessons
+            .filterNot { it.status == LessonStatus.Cancelled }
+            .sortedBy { it.pairNumber }
+
+        for (lesson in lessons) {
+            val start = parseTimeOrNull(lesson.timeStart)
+            val end = parseTimeOrNull(lesson.timeEnd)
+            if (start != null && end != null) {
+                if (!now.isBefore(start) && !now.isAfter(end)) {
+                    val remaining = ChronoUnit.MINUTES.between(now, end).coerceAtLeast(0)
+                    activePair = CurrentPairStatus(lesson.pairNumber, lesson.timeEnd, remaining)
+                    break
+                }
+            }
+        }
+
+        // Перемена показывается только между парами: до первой пары дня её ещё нет
+        if (activePair == null) {
+            val previousEnded = lessons.any { lesson ->
+                parseTimeOrNull(lesson.timeEnd)?.let { now.isAfter(it) } == true
+            }
+            if (previousEnded) {
+                for (lesson in lessons) {
+                    val start = parseTimeOrNull(lesson.timeStart)
+                    if (start != null && now.isBefore(start)) {
+                        val remaining = ChronoUnit.MINUTES.between(now, start).coerceAtLeast(0)
+                        activeBreak = BreakStatus(lesson.pairNumber, lesson.timeStart, remaining)
+                        break
+                    }
+                }
+            }
+        }
+
+        _currentPairStatus.value = activePair
+        _breakStatus.value = activeBreak
     }
 
-    /** Добавляет группу в избранное или убирает её оттуда. */
+    private fun parseTimeOrNull(timeStr: String): LocalTime? = try {
+        if (timeStr.isBlank()) null else LocalTime.parse(timeStr, TimeFormat)
+    } catch (_: Exception) {
+        null
+    }
+
     fun toggleGroupFavorite(group: GroupDto) {
         toggleFavorite(group.toFavorite())
     }
 
-    /** Добавляет преподавателя в избранное или убирает его оттуда. */
     fun toggleTeacherFavorite(teacher: TeacherDto) {
         toggleFavorite(teacher.toFavorite())
     }
@@ -194,24 +350,20 @@ class ScheduleViewModel @Inject constructor(
         }
     }
 
-    /** Убирает источник из избранного. */
     fun removeFavorite(favorite: FavoriteSource) {
         viewModelScope.launch { favoritesRepository.remove(favorite) }
     }
 
-    /** Сохраняет новую позицию после завершения перетаскивания. */
     fun moveFavorite(favorite: FavoriteSource, toIndex: Int) {
         viewModelScope.launch { favoritesRepository.move(favorite, toIndex) }
     }
 
-    /** Делает источник из избранного текущим расписанием. */
     fun openFavorite(favorite: FavoriteSource) {
         clearShownSchedule()
         savedSourceStore.save(setSelectedSource(favorite))
         loadSchedule()
     }
 
-    /** Восстанавливает выбор из справочника или из локально сохранённого источника. */
     private fun setSelectedSource(favorite: FavoriteSource): FavoriteSource =
         when (favorite.kind) {
             FavoriteKind.Group -> {

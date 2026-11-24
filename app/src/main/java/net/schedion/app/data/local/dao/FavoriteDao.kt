@@ -25,6 +25,14 @@ interface FavoriteDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(favorite: FavoriteEntity)
 
+    /** Добавляет список источников в избранное. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(favorites: List<FavoriteEntity>)
+
+    /** Очищает всё избранное. */
+    @Query("DELETE FROM favorites")
+    suspend fun deleteAll()
+
     /** Убирает источник из избранного. */
     @Query("DELETE FROM favorites WHERE kind = :kind AND sourceId = :sourceId")
     suspend fun delete(kind: String, sourceId: Int)

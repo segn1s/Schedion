@@ -23,14 +23,21 @@
     <string name="favorites_edit">Изменить избранное</string>
     <string name="favorites_empty_hint">Отметьте группу или преподавателя звёздочкой в поиске или в выборе расписания.</string>
     <string name="favorites_empty_title">В избранном пока пусто</string>
+    <string name="favorites_hint">Перетащите, чтобы поменять порядок. Первое открывается при запуске.</string>
     <string name="favorites_limit_reached">Достигнут лимит избранного: максимум %1$d</string>
     <string name="favorites_move_down">Переместить ниже</string>
     <string name="favorites_move_up">Переместить выше</string>
+    <string name="favorites_moving">%1$s · перемещается</string>
+    <string name="favorites_prompt_add">Добавить</string>
+    <string name="favorites_prompt_later">Не сейчас</string>
+    <string name="favorites_prompt_title">Добавить в избранное?</string>
     <string name="favorites_remove">Убрать из избранного</string>
     <string name="favorites_remove_source">Убрать из избранного: %1$s</string>
+    <string name="favorites_removed">%1$s убрана из избранного</string>
     <string name="favorites_reorder">Изменить порядок: %1$s</string>
     <string name="favorites_source_description">%1$s · %2$s</string>
     <string name="favorites_title">Избранное</string>
+    <string name="favorites_undo">Вернуть</string>
     <string name="news_title">Новости</string>
     <string name="schedule_day">День</string>
     <string name="schedule_day_date">%1$s, %2$s</string>
@@ -44,9 +51,17 @@
     <string name="schedule_room">Аудитория</string>
     <string name="schedule_room_short">ауд. %1$s</string>
     <string name="schedule_status_cancelled">Отменена</string>
+    <string name="schedule_status_cancelled_inline">отменена</string>
     <string name="schedule_status_current">Идёт сейчас</string>
+    <string name="schedule_status_current_until">Идёт, до %1$s</string>
+    <string name="schedule_status_current_remaining">осталось %1$d мин</string>
+    <string name="schedule_break_until">Перемена до %1$s</string>
+    <string name="schedule_distant">Дистант</string>
+    <string name="schedule_format">Формат</string>
+    <string name="schedule_today">Сегодня</string>
+    <string name="schedule_updated_at">Обновлено в %1$s</string>
     <string name="schedule_subgroup">Подгруппа</string>
-    <string name="schedule_subgroup_short">подгр. %1$d</string>
+    <string name="schedule_subgroup_short">п/г %1$d</string>
     <string name="schedule_teacher">Расписание преподавателя</string>
     <string name="schedule_title">Расписание</string>
     <string name="schedule_week">Неделя</string>
@@ -70,9 +85,12 @@
     <string name="state_load_error">Ошибка загрузки</string>
     <string name="state_news_empty">В ленте пока нет новостей</string>
     <string name="state_no_lessons">Занятий нет</string>
+    <string name="state_no_lessons_hint">В этот день пар нет</string>
+    <string name="state_next_lessons">Ближайшие занятия в %1$s, %2$s</string>
+    <string name="state_open_date">Открыть %1$s</string>
     <string name="state_offline">Нет сети</string>
     <string name="state_offline_title">Вне сети</string>
-    <string name="state_offline_saved_at">Данные актуальны на %1$s</string>
+    <string name="state_offline_saved_at">Показано сохранённое расписание от %1$s</string>
     <string name="state_schedule_day_empty">В этот день пар нет</string>
     <string name="state_schedule_day_empty_hint">Наслаждайтесь свободным временем!</string>
     <string name="state_schedule_week_empty">Занятий на этой неделе нет</string>
@@ -106,4 +124,13 @@
     <string name="files_downloaded">Файл скачан на устройство</string>
     <string name="docs_updated_at">Обновлён: %1$s</string>
     <string name="common_bullet">"• "</string>
+    <string-array name="weekday_names_in">
+        <item>понедельник</item>
+        <item>вторник</item>
+        <item>среду</item>
+        <item>четверг</item>
+        <item>пятницу</item>
+        <item>субботу</item>
+        <item>воскресенье</item>
+    </string-array>
 </resources>

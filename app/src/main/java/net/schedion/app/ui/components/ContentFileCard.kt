@@ -27,7 +27,7 @@ internal fun ContentFileCard(
     onShareLink: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    MockCard(modifier) {
+    SchedionCard(modifier) {
         Column(Modifier.padding(D.Page), verticalArrangement = Arrangement.spacedBy(D.Sm)) {
             Text(file.fileName, style = T.Title)
             Text(stringResource(R.string.files_metadata, fileLabel(file), Formatter.formatShortFileSize(LocalContext.current, file.size)), color = C.Muted, style = T.Small)
@@ -39,16 +39,16 @@ internal fun ContentFileCard(
                     else LinearProgressIndicator(progress = { percent / 100f }, modifier = Modifier.fillMaxWidth())
                 }
                 DownloadStatus.Complete -> {
-                    MockButton(stringResource(R.string.files_open), Modifier.fillMaxWidth(), primary = true, onClick = onOpen)
-                    MockButton(stringResource(R.string.files_share), Modifier.fillMaxWidth(), onClick = onShareFile)
+                    SchedionButton(stringResource(R.string.files_open), Modifier.fillMaxWidth(), primary = true, onClick = onOpen)
+                    SchedionButton(stringResource(R.string.files_share), Modifier.fillMaxWidth(), onClick = onShareFile)
                 }
                 else -> {
                     if (progress?.status == DownloadStatus.Failed) Text(stringResource(R.string.files_download_error), color = C.Red, style = T.Label)
-                    MockButton(stringResource(if (progress?.status == DownloadStatus.Failed) R.string.common_retry else R.string.common_download),
+                    SchedionButton(stringResource(if (progress?.status == DownloadStatus.Failed) R.string.common_retry else R.string.common_download),
                         Modifier.fillMaxWidth(), primary = true, icon = Glyph.Download, onClick = onDownload)
                 }
             }
-            MockButton(stringResource(R.string.docs_share_link), Modifier.fillMaxWidth(), onClick = onShareLink)
+            SchedionButton(stringResource(R.string.docs_share_link), Modifier.fillMaxWidth(), onClick = onShareLink)
         }
     }
 }

@@ -54,6 +54,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import net.schedion.app.R
 import net.schedion.app.ui.theme.SchedionColors as C
 import net.schedion.app.ui.theme.SchedionDimens as D
@@ -121,7 +122,7 @@ internal fun ScreenColumn(
 }
 
 @Composable
-internal fun MockCard(
+internal fun SchedionCard(
     modifier: Modifier = Modifier,
     color: Color = C.Surface,
     outline: Color = C.Outline,
@@ -138,7 +139,7 @@ internal fun MockCard(
 }
 
 @Composable
-internal fun MockButton(
+internal fun SchedionButton(
     label: String,
     modifier: Modifier = Modifier,
     primary: Boolean = false,
@@ -167,6 +168,7 @@ internal fun Segments(
     labels: List<String>,
     active: Int,
     modifier: Modifier = Modifier,
+    edgePadding: Dp = D.Page,
     onSelect: ((Int) -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(D.ControlRadius)
@@ -180,7 +182,7 @@ internal fun Segments(
                         if (onSelect == null) Modifier
                         else Modifier.clickable(role = Role.Tab) { onSelect(index) },
                     )
-                    .padding(horizontal = D.Page, vertical = D.Xs),
+                    .padding(horizontal = edgePadding, vertical = D.Xs),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(label, color = if (index == active) C.White else C.Primary, style = T.LabelStrong)
@@ -277,7 +279,7 @@ internal fun SearchField(
 }
 
 @Composable
-internal fun MockDivider(modifier: Modifier = Modifier) {
+internal fun SchedionDivider(modifier: Modifier = Modifier) {
     HorizontalDivider(modifier = modifier, thickness = D.Hairline, color = C.Divider)
 }
 

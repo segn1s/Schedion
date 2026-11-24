@@ -15,18 +15,25 @@ import net.schedion.app.ui.theme.SchedionColors as C
 import net.schedion.app.ui.theme.SchedionDimens as D
 import net.schedion.app.ui.theme.SchedionType as T
 
-/** Строка справочника группы или преподавателя без звёздочки избранного. */
+/**
+ * Строка справочника группы или преподавателя без звёздочки избранного.
+ *
+ * @param tall увеличенная высота строки: используется в списках поиска.
+ */
 @Composable
 internal fun DirectoryRow(
     title: String,
     subtitle: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    tall: Boolean = false,
+    favorite: Boolean = false,
+    onToggleFavorite: (() -> Unit)? = null,
 ) {
     Row(
-        modifier.fillMaxWidth().heightIn(min = D.PickerRow)
+        modifier.fillMaxWidth().heightIn(min = if (tall) D.SearchDirectoryRow else D.PickerRow)
             .clickable(onClick = onClick)
-            .padding(horizontal = D.L, vertical = D.S),
+            .padding(start = D.L, end = D.Xs, top = if (tall) D.M else D.S, bottom = if (tall) D.M else D.S),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -40,6 +47,9 @@ internal fun DirectoryRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+        if (onToggleFavorite != null) {
+            FavoriteStar(favorite = favorite, onToggle = onToggleFavorite)
         }
     }
 }

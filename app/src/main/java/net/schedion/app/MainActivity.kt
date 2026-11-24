@@ -12,6 +12,8 @@ import net.schedion.app.ui.navigation.NetworkStatusViewModel
 import net.schedion.app.ui.screens.documents.DocumentsViewModel
 import net.schedion.app.ui.screens.files.FilesViewModel
 import net.schedion.app.ui.screens.news.NewsViewModel
+import net.schedion.app.ui.screens.people.FavoritesViewModel
+import net.schedion.app.ui.screens.people.SearchViewModel
 import net.schedion.app.ui.screens.schedule.ScheduleViewModel
 import net.schedion.app.ui.theme.SchedionTheme
 
@@ -19,6 +21,8 @@ import net.schedion.app.ui.theme.SchedionTheme
 class MainActivity : ComponentActivity() {
 
     private val scheduleViewModel: ScheduleViewModel by viewModels()
+    private val searchViewModel: SearchViewModel by viewModels()
+    private val favoritesViewModel: FavoritesViewModel by viewModels()
     private val newsViewModel: NewsViewModel by viewModels()
     private val documentsViewModel: DocumentsViewModel by viewModels()
     private val filesViewModel: FilesViewModel by viewModels()
@@ -34,6 +38,8 @@ class MainActivity : ComponentActivity() {
             SchedionTheme {
                 AppNavGraph(
                     scheduleViewModel = scheduleViewModel,
+                    searchViewModel = searchViewModel,
+                    favoritesViewModel = favoritesViewModel,
                     newsViewModel = newsViewModel,
                     documentsViewModel = documentsViewModel,
                     filesViewModel = filesViewModel,

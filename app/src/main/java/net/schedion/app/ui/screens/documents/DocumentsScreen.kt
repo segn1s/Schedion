@@ -34,11 +34,13 @@ internal fun DocumentsScreen(
     val downloads by files.downloads.collectAsState()
     val bottom = bottomSpacing() + D.NavHeight + D.Ml
     val context = LocalContext.current
-    PullToRefreshBox(state.isRefreshing, viewModel::refresh, modifier = modifier.fillMaxSize()) {
+    // Индикатор обновления держится не меньше трёх секунд, как и на расписании
+    val refresh = rememberRefreshHandle { viewModel.refresh() }
+    PullToRefreshBox(refresh.holding || state.isRefreshing, refresh.onRefresh, modifier = modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(start = D.Page, end = D.Page, top = topSpacing()), verticalArrangement = Arrangement.spacedBy(D.L)) {
             Text(stringResource(R.string.docs_title), style = T.Heading)
-            if (isOffline) OfflineBanner(state.savedAt)
-            UiStateContent(state, viewModel::refresh, Modifier.weight(1f),
+            if (isOffline) OfflineBanner(state.savedAt, onRefresh = refresh.onRefresh)
+            UiStateContent(state, refresh.onRefresh, Modifier.weight(1f),
                 scrollFallback = true,
                 showOfflineBanner = false,
                 emptyTitle = R.string.state_documents_empty, isEmpty = { it.isEmpty() }) { categories ->
@@ -53,7 +55,7 @@ internal fun DocumentsScreen(
                             item(key = "category:$index") { Text(category.title, color = C.Secondary, style = T.LabelStrong) }
                             if (category.documents.isEmpty()) item { EmptyContent(R.string.state_documents_category_empty) }
                             items(category.documents, key = { "${category.title}:${it.slug}" }) { document ->
-                                MockCard(onClick = { onOpenDocument(document.slug) }) {
+                                SchedionCard(onClick = { onOpenDocument(document.slug) }) {
                                     Column(Modifier.padding(D.Page), verticalArrangement = Arrangement.spacedBy(D.Sm)) {
                                         Text(document.title, style = T.Title)
                                         document.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = C.Secondary, style = T.Body) }
@@ -102,17 +104,19 @@ internal fun DocumentDetails(
     val downloads by files.downloads.collectAsState()
     val shown = if (state.data == null || state.data?.slug == slug) state else ContentState()
     val bottom = bottomSpacing() + D.NavHeight + D.Page
-    PullToRefreshBox(shown.isRefreshing, viewModel::refreshDocument, modifier = modifier.fillMaxSize()) {
+    // Индикатор обновления держится не меньше трёх секунд, как и на расписании
+    val refresh = rememberRefreshHandle { viewModel.refreshDocument() }
+    PullToRefreshBox(refresh.holding || shown.isRefreshing, refresh.onRefresh, modifier = modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(start = D.Page, end = D.Page, top = topSpacing()), verticalArrangement = Arrangement.spacedBy(D.Ml)) {
             BackBar(stringResource(R.string.docs_title), onBack)
-            if (isOffline) OfflineBanner(shown.savedAt)
-            UiStateContent(shown, viewModel::refreshDocument, Modifier.weight(1f), scrollFallback = true,
+            if (isOffline) OfflineBanner(shown.savedAt, onRefresh = refresh.onRefresh)
+            UiStateContent(shown, refresh.onRefresh, Modifier.weight(1f), scrollFallback = true,
                 showOfflineBanner = false) { document ->
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(D.L), contentPadding = PaddingValues(bottom = bottom)) {
                     item { Text(document.title, style = T.Heading) }
                     document.description?.takeIf { it.isNotBlank() }?.let { description -> item { Text(description, style = T.ArticleBody) } }
                     item {
-                        MockCard {
+                        SchedionCard {
                             Column(Modifier.padding(D.Page), verticalArrangement = Arrangement.spacedBy(D.Ml)) {
                                 if (document.audiences.isNotEmpty()) DetailRow(stringResource(R.string.docs_audience)) {
                                     document.audiences.forEach { audience ->

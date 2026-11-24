@@ -41,7 +41,7 @@ internal fun NewsDetails(
     PullToRefreshBox(shown.isRefreshing, viewModel::refreshArticle, modifier = modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(start = D.Page, end = D.Page, top = topSpacing()), verticalArrangement = Arrangement.spacedBy(D.Ml)) {
             BackBar(stringResource(R.string.news_title), onBack)
-            if (isOffline) OfflineBanner(shown.savedAt)
+            if (isOffline) OfflineBanner(shown.savedAt, onRefresh = viewModel::refreshArticle)
             UiStateContent(shown, viewModel::refreshArticle, Modifier.weight(1f), scrollFallback = true,
                 showOfflineBanner = false) { news ->
                 val renderedImages = blocks.filterIsInstance<ArticleBlock.Image>().map { it.url }.toSet() + news.coverUrl
@@ -78,11 +78,11 @@ internal fun NewsDetails(
                             { files.shareFile(file) }, { files.shareLink(file.url) })
                     }
                     if (news.sourceUrl != null) item {
-                        MockButton(stringResource(R.string.news_source), Modifier.fillMaxWidth(), icon = Glyph.External,
+                        SchedionButton(stringResource(R.string.news_source), Modifier.fillMaxWidth(), icon = Glyph.External,
                             onClick = { files.openLink(news.sourceUrl) })
                     }
                     item {
-                        MockButton(stringResource(R.string.news_share), Modifier.fillMaxWidth(), icon = Glyph.Share,
+                        SchedionButton(stringResource(R.string.news_share), Modifier.fillMaxWidth(), icon = Glyph.Share,
                             onClick = { files.shareText(listOfNotNull(news.title, news.summary, news.sourceUrl).joinToString("\n\n")) })
                     }
                 }

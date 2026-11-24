@@ -23,7 +23,7 @@ internal fun DirectoryStatus(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(D.Sm)) {
         if (state.data == null && (state.isRefreshing || state.error == null)) {
             Text(stringResource(R.string.search_directory_loading), style = T.Body)
-            ContentSkeleton()
+            DirectorySkeleton()
         } else if (!state.isRefreshing && state.error != null) {
             UiStateContent(state, onRetry, showOfflineBanner = showOfflineBanner, content = {})
         }

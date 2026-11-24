@@ -1,10 +1,16 @@
 package net.schedion.app.ui.screens.people
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,10 +25,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -41,8 +50,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -57,41 +70,81 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import net.schedion.app.R
 import net.schedion.app.domain.model.FavoriteKind
 import net.schedion.app.domain.model.FavoriteSource
 import net.schedion.app.ui.components.Glyph
 import net.schedion.app.ui.components.LineIcon
-import net.schedion.app.ui.components.MockCard
+import net.schedion.app.ui.components.SchedionCard
+import net.schedion.app.ui.components.SchedionDivider
 import net.schedion.app.ui.components.bottomSpacing
 import net.schedion.app.ui.components.topSpacing
-import net.schedion.app.ui.screens.schedule.ScheduleViewModel
 import net.schedion.app.ui.theme.SchedionColors as C
 import net.schedion.app.ui.theme.SchedionDimens as D
 import net.schedion.app.ui.theme.SchedionType as T
 
 @Composable
 internal fun FavoritesScreen(
-    viewModel: ScheduleViewModel,
+    viewModel: FavoritesViewModel,
     onBack: () -> Unit,
     onOpenSchedule: () -> Unit,
+    onOpenFavorite: (FavoriteSource) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val favorites by viewModel.favorites.collectAsState()
+    val draftFavorites by viewModel.draftFavorites.collectAsState()
+    val lastRemoved by viewModel.lastRemoved.collectAsState()
 
-    FavoritesList(
-        favorites = favorites,
-        limit = viewModel.favoritesLimit,
-        onBack = onBack,
-        onOpen = { favorite ->
-            viewModel.openFavorite(favorite)
-            onOpenSchedule()
-        },
-        onRemove = viewModel::removeFavorite,
-        onMove = viewModel::moveFavorite,
-        modifier = modifier,
-    )
+    // Черновик пересобирается при каждом открытии экрана: «Отмена» не должна оставлять
+    // в памяти правки прошлого захода.
+    LaunchedEffect(Unit) { viewModel.resetDraft() }
+
+    var showUndoSnackbar by remember { mutableStateOf(false) }
+    var currentRemoved by remember { mutableStateOf<RemovedFavorite?>(null) }
+
+    LaunchedEffect(lastRemoved) {
+        if (lastRemoved != null) {
+            currentRemoved = lastRemoved
+            showUndoSnackbar = true
+        }
+    }
+
+    // Каждое удаление перезапускает отчёт 4,5 секунды на отмену
+    LaunchedEffect(showUndoSnackbar, currentRemoved) {
+        if (showUndoSnackbar) {
+            delay(4500)
+            showUndoSnackbar = false
+            viewModel.clearLastRemoved()
+        }
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        FavoritesList(
+            favorites = draftFavorites,
+            limit = viewModel.favoritesLimit,
+            onBack = onBack,
+            onSave = {
+                viewModel.saveFavorites()
+                onBack()
+            },
+            onOpen = { favorite ->
+                onOpenFavorite(favorite)
+                onOpenSchedule()
+            },
+            onRemove = { favorite ->
+                viewModel.removeFavorite(favorite)
+            },
+            onMove = viewModel::moveFavorite,
+            onUndoRemove = if (showUndoSnackbar && currentRemoved != null) ({
+                viewModel.undoRemove()
+                showUndoSnackbar = false
+            }) else null,
+            removedItem = if (showUndoSnackbar) currentRemoved?.favorite else null,
+        )
+    }
 }
 
 private data class FavoriteDrag(
@@ -105,7 +158,36 @@ private data class FavoriteDrag(
     val center: Float get() = top + height / 2f
 }
 
+/** Положение строки избранного в координатах списка. */
+private data class FavoriteRowBounds(val top: Float, val height: Float)
+
 private fun FavoriteSource.listKey(): String = "$kind:$id"
+
+/**
+ * Ждёт долгое нажатие, не обращая внимания на потребление down-события кликабельными строками.
+ *
+ * Стандартный [androidx.compose.foundation.gestures.awaitLongPressOrCancellation] отменяется,
+ * как только дочерний клик помечает событие использованным, поэтому перетаскивание карточки
+ * не начиналось. Здесь down читается на проходе [PointerEventPass.Initial], а жест отменяется
+ * только при движении или отпускании пальца.
+ */
+private suspend fun AwaitPointerEventScope.awaitInitialLongPress(down: PointerInputChange): PointerInputChange? {
+    var current = down
+    return withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (event.changes.all { !it.pressed }) return@withTimeoutOrNull null
+            val change = event.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull null
+            if (!change.pressed) return@withTimeoutOrNull null
+            if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                return@withTimeoutOrNull null
+            }
+            current = change
+        }
+        @Suppress("UNREACHABLE_CODE")
+        current
+    } ?: current
+}
 
 @Composable
 internal fun FavoritesList(
@@ -115,6 +197,9 @@ internal fun FavoritesList(
     onOpen: (FavoriteSource) -> Unit,
     onRemove: (FavoriteSource) -> Unit,
     onMove: (FavoriteSource, Int) -> Unit,
+    onSave: (() -> Unit)? = null,
+    onUndoRemove: (() -> Unit)? = null,
+    removedItem: FavoriteSource? = null,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -126,9 +211,12 @@ internal fun FavoritesList(
     val bottom = bottomSpacing()
     var displayed by remember { mutableStateOf(favorites) }
     var dragged by remember { mutableStateOf<FavoriteDrag?>(null) }
+    // Строки лежат внутри одного элемента LazyColumn, поэтому их геометрию измеряем сами:
+    // без этого жест не может понять, какую карточку тянут и куда её переместить.
+    val bounds = remember { mutableStateMapOf<String, FavoriteRowBounds>() }
+    var listTop by remember { mutableStateOf(0f) }
 
     LaunchedEffect(favorites) {
-        // Подтверждение предыдущего порядка из Room не должно прерывать новый жест.
         if (dragged == null || favorites.toSet() != displayed.toSet()) {
             dragged = null
             displayed = favorites
@@ -138,8 +226,6 @@ internal fun FavoritesList(
     fun movePreview(source: FavoriteSource, destination: Int) {
         val from = displayed.indexOf(source)
         if (from < 0 || from == destination) return
-        // Удерживаем видимую позицию экрана, когда первая строка сама перемещается.
-        listState.requestScrollToItem(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
         displayed = displayed.toMutableList().apply { add(destination, removeAt(from)) }
     }
 
@@ -148,16 +234,19 @@ internal fun FavoritesList(
         onMove(source, destination)
     }
 
-    // Центры видимых строк задают место вставки даже при прокрутке и разной высоте строк.
+    /** Индекс, на который встанет перетаскиваемая карточка по её текущему центру. */
+    fun destinationFor(active: FavoriteDrag): Int {
+        val others = displayed.filterNot { it == active.source }
+        others.forEachIndexed { index, favorite ->
+            val row = bounds[favorite.listKey()] ?: return@forEachIndexed
+            if (active.center < row.top + row.height / 2f) return index
+        }
+        return others.size
+    }
+
     fun updatePreview(active: FavoriteDrag) {
-        val key = active.source.listKey()
-        val neighbors = listState.layoutInfo.visibleItemsInfo.filter { it.key is String && it.key != key }
-        val next = neighbors.firstOrNull { active.center < it.offset + it.size / 2f }
-        val anchor = next ?: neighbors.lastOrNull() ?: return
-        val otherRows = displayed.filterNot { it == active.source }
-        val anchorIndex = otherRows.indexOfFirst { it.listKey() == anchor.key }
-        if (anchorIndex < 0) return
-        movePreview(active.source, if (next == null) anchorIndex + 1 else anchorIndex)
+        val destination = destinationFor(active)
+        if (displayed.indexOf(active.source) != destination) movePreview(active.source, destination)
     }
 
     val height by remember(listState) { derivedStateOf { listState.layoutInfo.viewportSize.height } }
@@ -173,40 +262,49 @@ internal fun FavoritesList(
     val scrollDirection = scrollFraction.compareTo(0f)
     LaunchedEffect(scrollDirection, density) {
         if (scrollDirection == 0) return@LaunchedEffect
-        val maxStep = with(density) { D.FavoritesDragScrollStep.toPx() }
-        while (dragged != null) {
-            withFrameNanos { }
-            if (listState.scrollBy(currentScrollFraction * maxStep) == 0f) break
+        val maxSpeed = with(density) { D.FavoritesDragScrollStep.toPx() }
+        while (true) {
+            val fraction = currentScrollFraction
+            if (fraction == 0f) break
+            listState.scrollBy(fraction * maxSpeed)
             dragged?.let(::updatePreview)
+            withFrameNanos { }
         }
     }
 
     Box(
-        modifier.fillMaxSize().padding(horizontal = D.Page).clipToBounds()
+        modifier
+            .fillMaxSize()
+            .padding(horizontal = D.Page)
+            .clipToBounds()
+            .onGloballyPositioned { listTop = it.positionInRoot().y }
             .pointerInput(listState, isRtl) {
                 val handleWidth = (D.FavoritesReorderHandle + D.Xs).toPx()
                 val removeArea = (D.Page + D.NavIcon + D.Sm * 2).toPx()
                 awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     if (displayed.size < 2) return@awaitEachGesture
                     val fromStart = if (isRtl) size.width - down.position.x else down.position.x
                     if (fromStart < removeArea) return@awaitEachGesture
                     val onHandle = size.width - fromStart <= handleWidth
 
-                    val item = listState.layoutInfo.visibleItemsInfo.firstOrNull {
-                        down.position.y >= it.offset && down.position.y < it.offset + it.size
+                    val hit = displayed.firstOrNull { favorite ->
+                        val row = bounds[favorite.listKey()] ?: return@firstOrNull false
+                        down.position.y >= row.top && down.position.y < row.top + row.height
                     } ?: return@awaitEachGesture
-                    val source = displayed.firstOrNull { it.listKey() == item.key } ?: return@awaitEachGesture
-                    val pressed = (if (onHandle) down else awaitLongPressOrCancellation(down.id))
-                        ?: return@awaitEachGesture
-                    val row = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == item.key }
+                    val hitRow = bounds[hit.listKey()] ?: return@awaitEachGesture
+                    val pressed = (if (onHandle) down else awaitInitialLongPress(down))
                         ?: return@awaitEachGesture
                     val initialOrder = displayed
-                    dragged = FavoriteDrag(source, row.size, pressed.position.y - row.offset, pressed.position.y)
-                    if (!onHandle) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    dragged = FavoriteDrag(
+                        source = hit,
+                        height = hitRow.height.roundToInt(),
+                        grabOffset = pressed.position.y - hitRow.top,
+                        pointerY = pressed.position.y,
+                    )
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     var completed = false
                     try {
-                        // Захваченная строка получает движение раньше обработчика прокрутки списка.
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val change = event.changes.firstOrNull { it.id == pressed.id } ?: break
@@ -218,16 +316,13 @@ internal fun FavoritesList(
                                 break
                             }
                             if (change.position.y == active.pointerY) continue
-                            if (onHandle && !active.hasMoved) {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            }
                             val moved = active.copy(pointerY = change.position.y, hasMoved = true)
                             dragged = moved
                             updatePreview(moved)
                         }
                         if (completed) {
-                            val destination = displayed.indexOf(source)
-                            if (destination != initialOrder.indexOf(source)) currentOnMove(source, destination)
+                            val destination = displayed.indexOf(hit)
+                            if (destination != initialOrder.indexOf(hit)) currentOnMove(hit, destination)
                         }
                     } finally {
                         if (!completed && dragged != null) displayed = initialOrder
@@ -239,61 +334,133 @@ internal fun FavoritesList(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = bottom + D.Ml),
-            verticalArrangement = Arrangement.spacedBy(D.Xs),
+            contentPadding = PaddingValues(bottom = bottom + 80.dp),
         ) {
             item {
-                FavoritesHeader(favorites.size, limit, onBack, Modifier.padding(top = top))
+                FavoritesHeader(
+                    onBack = onBack,
+                    onSave = onSave ?: onBack,
+                    modifier = Modifier.padding(top = top),
+                )
             }
-            if (displayed.isEmpty()) item { EmptyFavorites() }
-            itemsIndexed(displayed, key = { _, source -> source.listKey() }) { index, source ->
-                val active = dragged
-                if (active?.source == source) {
-                    Spacer(Modifier.fillMaxWidth().height(with(density) { active.height.toDp() }))
-                } else {
-                    FavoriteRow(
-                        favorite = source,
-                        modifier = Modifier.animateItem(),
-                        onOpen = { onOpen(source) },
-                        onRemove = { onRemove(source) },
-                        onMoveUp = if (index > 0) ({ saveMove(source, index - 1) }) else null,
-                        onMoveDown = if (index < displayed.lastIndex) ({ saveMove(source, index + 1) }) else null,
+
+            if (displayed.isEmpty()) {
+                item { EmptyFavorites() }
+            } else {
+                item {
+                    SchedionCard(
+                        color = C.Surface,
+                        outline = C.Outline,
+                    ) {
+                        displayed.forEachIndexed { index, source ->
+                            if (index > 0) SchedionDivider()
+                            val active = dragged
+                            if (active?.source == source) {
+                                Spacer(Modifier.fillMaxWidth().height(with(density) { active.height.toDp() }))
+                            } else {
+                                FavoriteRow(
+                                    favorite = source,
+                                    modifier = Modifier.onGloballyPositioned { coordinates ->
+                                        bounds[source.listKey()] = FavoriteRowBounds(
+                                            top = coordinates.positionInRoot().y - listTop,
+                                            height = coordinates.size.height.toFloat(),
+                                        )
+                                    },
+                                    onOpen = { onOpen(source) },
+                                    onRemove = { onRemove(source) },
+                                    onMoveUp = if (index > 0) ({ saveMove(source, index - 1) }) else null,
+                                    onMoveDown = if (index < displayed.lastIndex) ({ saveMove(source, index + 1) }) else null,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Spacer(Modifier.height(D.M))
+                    Text(
+                        text = stringResource(R.string.favorites_count, displayed.size, limit),
+                        color = C.Muted,
+                        style = T.Label,
                     )
                 }
             }
         }
 
+        // Перетаскиваемая плашка поверх списка
         val active = dragged
         if (active != null) {
             FavoriteRow(
                 favorite = active.source,
+                isMoving = true,
                 modifier = Modifier
                     .offset { IntOffset(x = 0, y = active.top.roundToInt()) }
                     .shadow(D.Sm, RoundedCornerShape(D.CardRadius))
                     .clearAndSetSemantics {},
             )
         }
+
+        // Всплывающий снекбар отмены удаления
+        AnimatedVisibility(
+            visible = removedItem != null && onUndoRemove != null,
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(220)) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(180)) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = bottom + D.M),
+        ) {
+            if (removedItem != null && onUndoRemove != null) {
+                UndoRemovalSnackbar(
+                    title = removedItem.title,
+                    onUndo = onUndoRemove,
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun FavoritesHeader(count: Int, limit: Int, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier.padding(bottom = D.M)) {
-        Row(Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.common_cancel), Modifier.clickable(role = Role.Button, onClick = onBack), C.Secondary, style = T.BodyStrong)
-            Spacer(Modifier.weight(1f))
-            Text(stringResource(R.string.common_done), Modifier.clickable(role = Role.Button, onClick = onBack).padding(end = D.Xs), C.Primary, style = T.BodyStrong)
+private fun FavoritesHeader(
+    onBack: () -> Unit,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.padding(bottom = D.L)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.common_cancel),
+                modifier = Modifier.clickable(role = Role.Button, onClick = onBack),
+                color = C.Secondary,
+                style = T.BodyStrong,
+            )
+            Text(
+                text = stringResource(R.string.common_done),
+                modifier = Modifier.clickable(role = Role.Button, onClick = onSave),
+                color = C.Primary,
+                style = T.BodyStrong,
+            )
         }
-        Spacer(Modifier.height(D.Xl))
-        Text(stringResource(R.string.favorites_title), style = T.Heading)
+        Spacer(Modifier.height(D.L))
+        Text(
+            text = stringResource(R.string.favorites_title),
+            style = T.Heading,
+        )
         Spacer(Modifier.height(D.Xs))
-        Text(stringResource(R.string.favorites_count, count, limit), color = C.Muted, style = T.Label)
+        Text(
+            text = stringResource(R.string.favorites_hint),
+            color = C.Secondary,
+            style = T.Body,
+        )
     }
 }
 
 @Composable
 private fun EmptyFavorites() {
-    MockCard(color = C.Past) {
+    SchedionCard(color = C.Past) {
         Column(
             Modifier.fillMaxWidth().padding(D.Page),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -316,6 +483,7 @@ private fun EmptyFavorites() {
 private fun FavoriteRow(
     favorite: FavoriteSource,
     modifier: Modifier = Modifier,
+    isMoving: Boolean = false,
     onOpen: (() -> Unit)? = null,
     onRemove: (() -> Unit)? = null,
     onMoveUp: (() -> Unit)? = null,
@@ -323,28 +491,52 @@ private fun FavoriteRow(
 ) {
     val removeLabel = stringResource(R.string.favorites_remove_source, favorite.title)
     Row(
-        modifier.fillMaxWidth().heightIn(min = D.FavoritesRow)
-            .clip(RoundedCornerShape(D.CardRadius)).background(C.Surface)
-            .padding(start = D.Page, end = D.Xs),
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = D.FavoritesRow)
+            .background(C.Surface)
+            .padding(horizontal = D.Page, vertical = D.S),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(D.NavIcon + D.Sm)
-                .then(if (onRemove != null) Modifier.semantics { contentDescription = removeLabel }.clickable(role = Role.Button, onClick = onRemove) else Modifier),
+            Modifier
+                .size(D.NavIcon + D.Sm)
+                .then(
+                    if (onRemove != null) {
+                        Modifier
+                            .semantics { contentDescription = removeLabel }
+                            .clickable(role = Role.Button, onClick = onRemove)
+                    } else Modifier
+                ),
             contentAlignment = Alignment.Center,
         ) {
             LineIcon(Glyph.Remove, tint = C.Red)
         }
+
+        Spacer(Modifier.width(D.S))
+
         Column(
-            Modifier.weight(1f).heightIn(min = D.FavoritesRow)
+            Modifier
+                .weight(1f)
                 .then(if (onOpen != null) Modifier.clickable(role = Role.Button, onClick = onOpen) else Modifier)
-                .wrapContentHeight().padding(start = D.Page, top = D.S, bottom = D.S),
+                .wrapContentHeight(),
         ) {
-            Text(favorite.title, style = T.Title)
+            Text(favorite.title, style = T.BodyStrong)
+            val kindLabel = if (favorite.kind == FavoriteKind.Group) {
+                stringResource(R.string.common_group)
+            } else {
+                stringResource(R.string.common_teacher)
+            }
+            // Без перетаскивания вторая строка — только тип источника
+            val subtitleText = if (isMoving) {
+                stringResource(R.string.favorites_moving, kindLabel)
+            } else {
+                kindLabel
+            }
             Text(
-                favoriteLine(favorite),
+                text = subtitleText,
                 color = C.Muted,
-                style = T.Label,
+                style = T.Small,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -377,10 +569,44 @@ private fun FavoriteRow(
     }
 }
 
-/** Подпись строки избранного: тип источника и его уточнение. */
 @Composable
-private fun favoriteLine(favorite: FavoriteSource): String {
-    val kindLabel = if (favorite.kind == FavoriteKind.Group) stringResource(R.string.common_group) else stringResource(R.string.common_teacher)
-    val subtitle = favorite.subtitle
-    return if (subtitle.isNullOrBlank()) kindLabel else stringResource(R.string.favorites_source_description, kindLabel, subtitle)
+private fun UndoRemovalSnackbar(
+    title: String,
+    onUndo: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(D.FloatingShadow, shape, spotColor = C.Shadow)
+            .background(C.Surface, shape)
+            .padding(horizontal = D.Page, vertical = D.Ml),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Зелёная точка с полупрозрачным ореолом, как в макете
+        Box(
+            Modifier
+                .size(28.dp)
+                .background(C.Success.copy(alpha = .14f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.size(10.dp).background(C.Success, CircleShape))
+        }
+        Spacer(Modifier.width(D.S))
+        Text(
+            text = stringResource(R.string.favorites_removed, title),
+            modifier = Modifier.weight(1f),
+            style = T.Body,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.width(D.S))
+        Text(
+            text = stringResource(R.string.favorites_undo),
+            color = C.Primary,
+            style = T.BodyStrong,
+            modifier = Modifier.clickable(role = Role.Button, onClick = onUndo),
+        )
+    }
 }

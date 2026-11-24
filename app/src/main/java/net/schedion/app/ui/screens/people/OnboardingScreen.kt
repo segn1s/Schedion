@@ -25,8 +25,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.stringResource
 import net.schedion.app.R
 import net.schedion.app.ui.components.DirectoryRow
-import net.schedion.app.ui.components.MockCard
-import net.schedion.app.ui.components.MockDivider
+import net.schedion.app.ui.components.SchedionCard
+import net.schedion.app.ui.components.SchedionDivider
 import net.schedion.app.ui.components.DirectoryStatus
 import net.schedion.app.ui.components.PeopleHeading
 import net.schedion.app.ui.components.SearchField
@@ -48,8 +48,9 @@ internal fun OnboardingScreen(
     val knownTeachers by viewModel.availableTeachers.collectAsState()
     val groups = state.data?.groups ?: knownGroups
     val teachers = state.data?.teachers ?: knownTeachers
-    val showGroups = state.data != null || groups.isNotEmpty()
-    val showTeachers = state.data != null || teachers.isNotEmpty()
+    // Счётчики показываем только по загруженным спискам: во время подгрузки их ещё нет
+    val hasGroups = groups.isNotEmpty()
+    val hasTeachers = teachers.isNotEmpty()
     var query by remember { mutableStateOf("") }
 
     val filteredGroups = remember(groups, query) {
@@ -89,8 +90,8 @@ internal fun OnboardingScreen(
                 Spacer(Modifier.height(D.Page))
 
                 DirectoryStatus(state, onRetry = { viewModel.refreshDirectories(refreshAllWeeks = true) })
-                if (showGroups) PeopleHeading(stringResource(R.string.search_groups_count, filteredGroups.size))
-                if (showGroups && filteredGroups.isEmpty()) {
+                if (hasGroups) PeopleHeading(stringResource(R.string.search_groups_count, filteredGroups.size))
+                if (hasGroups && filteredGroups.isEmpty()) {
                     Text(stringResource(R.string.search_groups_empty), color = C.Muted, style = T.Body)
                 } else {
                     filteredGroups.groupedByCourse().forEach { (course, courseGroups) ->
@@ -100,9 +101,9 @@ internal fun OnboardingScreen(
                             C.Muted,
                             style = T.SmallStrong,
                         )
-                        MockCard {
+                        SchedionCard {
                             courseGroups.forEachIndexed { index, group ->
-                                if (index > 0) MockDivider()
+                                if (index > 0) SchedionDivider()
                                 DirectoryRow(
                                     title = group.name,
                                     subtitle = group.description,
@@ -118,13 +119,13 @@ internal fun OnboardingScreen(
                 }
 
                 Spacer(Modifier.height(D.S))
-                if (showTeachers) PeopleHeading(stringResource(R.string.search_teachers_count, filteredTeachers.size))
-                if (showTeachers && filteredTeachers.isEmpty()) {
+                if (hasTeachers) PeopleHeading(stringResource(R.string.search_teachers_count, filteredTeachers.size))
+                if (hasTeachers && filteredTeachers.isEmpty()) {
                     Text(stringResource(R.string.search_teachers_empty), color = C.Muted, style = T.Body)
                 } else if (filteredTeachers.isNotEmpty()) {
-                    MockCard {
+                    SchedionCard {
                         filteredTeachers.forEachIndexed { index, teacher ->
-                            if (index > 0) MockDivider()
+                            if (index > 0) SchedionDivider()
                             DirectoryRow(
                                 title = teacher.shortName,
                                 subtitle = null,
