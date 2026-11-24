@@ -19,7 +19,7 @@ import net.schedion.app.ui.theme.SchedionDimens as D
 
 internal enum class Glyph {
     Calendar, EmptyCalendar, Search, News, Document, Star, FilledStar,
-    Back, Next, Down, Check, Download, Share, External, Remove, Reorder,
+    Back, Next, Down, Check, Download, Share, External, Remove, Reorder, Bell,
 }
 
 /** Контурные иконки макета на сетке 24 × 24. */
@@ -99,6 +99,11 @@ internal fun LineIcon(
                 Glyph.Reorder -> {
                     line(4f, 8.5f, 20f, 8.5f)
                     line(4f, 15.5f, 20f, 15.5f)
+                }
+                Glyph.Bell -> {
+                    line(12f, 2.5f, 12f, 4.5f)
+                    outline(6f, 16.5f, 6f, 11f, 8f, 7f, 12f, 5.5f, 16f, 7f, 18f, 11f, 18f, 16.5f, 20f, 18.5f, 4f, 18.5f, closed = true)
+                    outline(10f, 19.5f, 14f, 19.5f)
                 }
             }
         }

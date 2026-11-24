@@ -32,6 +32,9 @@ interface FavoritesRepository {
     /** Перемещает источник на указанную позицию в сохранённом списке. */
     suspend fun move(favorite: FavoriteSource, toIndex: Int)
 
+    /** Сохраняет обновлённый список избранного целиком. */
+    suspend fun saveFavorites(items: List<FavoriteSource>)
+
     companion object {
         const val MaxFavorites = 10
     }
@@ -86,5 +89,13 @@ class FavoritesRepositoryImpl @Inject constructor(
             if (item.position == position) null else item.copy(position = position)
         }
         favoriteDao.updateAll(updates)
+    }
+
+    override suspend fun saveFavorites(items: List<FavoriteSource>) = database.withTransaction {
+        favoriteDao.deleteAll()
+        val entities = items.take(FavoritesRepository.MaxFavorites).mapIndexed { index, source ->
+            source.toEntity().copy(position = index.toLong())
+        }
+        favoriteDao.insertAll(entities)
     }
 }

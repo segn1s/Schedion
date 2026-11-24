@@ -51,6 +51,20 @@ data class PairItem(
     val end: String,
 )
 
+/** Статус текущей пары. */
+data class CurrentPairStatus(
+    val pairNumber: Int,
+    val timeEnd: String,
+    val remainingMinutes: Long,
+)
+
+/** Статус перемены перед следующей парой. */
+data class BreakStatus(
+    val nextPairNumber: Int,
+    val nextPairStart: String,
+    val remainingMinutes: Long,
+)
+
 /** Учебная неделя семестра. */
 data class WeekInfo(
     val startDate: String,

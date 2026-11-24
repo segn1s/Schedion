@@ -18,7 +18,7 @@ import net.schedion.app.R
 import net.schedion.app.domain.model.LessonItem
 import net.schedion.app.domain.model.LessonStatus
 import net.schedion.app.ui.components.Chip
-import net.schedion.app.ui.components.MockButton
+import net.schedion.app.ui.components.SchedionButton
 import net.schedion.app.ui.screens.documents.DetailRow
 import net.schedion.app.ui.theme.SchedionColors as C
 import net.schedion.app.ui.theme.SchedionDimens as D
@@ -37,9 +37,15 @@ internal fun LessonDetails(
     val isCancelled = lesson?.status == LessonStatus.Cancelled
     val teachers = lesson?.teachers
 
+    val currentBadge = if (!lesson?.timeEnd.isNullOrBlank()) {
+        stringResource(R.string.schedule_status_current_until, lesson?.timeEnd.orEmpty())
+    } else {
+        stringResource(R.string.schedule_status_current)
+    }
+
     Column(modifier.fillMaxWidth().padding(horizontal = D.Page, vertical = D.Sm)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(D.Sm)) {
-            if (isCurrent) Chip(stringResource(R.string.schedule_status_current), C.Today, C.Text)
+            if (isCurrent) Chip(currentBadge, C.Today, C.Text)
             if (isCancelled) Chip(stringResource(R.string.schedule_status_cancelled), C.RedTint, C.Red)
             Text(kind, color = C.Secondary, style = T.Label)
         }
@@ -59,7 +65,12 @@ internal fun LessonDetails(
                     style = T.Body,
                 )
             }
-            lesson?.room?.let { room ->
+            val room = lesson?.room
+            if (isDistantRoom(room)) {
+                DetailRow(stringResource(R.string.schedule_format)) {
+                    Text(stringResource(R.string.schedule_distant), style = T.Body)
+                }
+            } else if (!room.isNullOrBlank()) {
                 DetailRow(stringResource(R.string.schedule_room)) { Text(room, style = T.Body) }
             }
             lesson?.groupName?.let { group ->
@@ -82,10 +93,10 @@ internal fun LessonDetails(
         }
         Spacer(Modifier.height(D.Page + D.Tiny))
         if (!teachers.isNullOrEmpty()) {
-            MockButton(stringResource(R.string.schedule_teacher), Modifier.fillMaxWidth(), primary = true, onClick = onTeacher)
+            SchedionButton(stringResource(R.string.schedule_teacher), Modifier.fillMaxWidth(), primary = true, onClick = onTeacher)
             Spacer(Modifier.height(D.Sm))
         }
-        MockButton(stringResource(R.string.common_close), Modifier.fillMaxWidth(), onClick = onClose)
+        SchedionButton(stringResource(R.string.common_close), Modifier.fillMaxWidth(), onClick = onClose)
     }
 }
 

@@ -3,12 +3,15 @@ package net.schedion.app.ui.navigation
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,11 +46,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import net.schedion.app.R
 import net.schedion.app.ui.components.Glyph
 import net.schedion.app.ui.components.LineIcon
 import net.schedion.app.ui.components.SchedionBackdrop
+import net.schedion.app.ui.components.SchedionPrompt
 import net.schedion.app.ui.components.bottomSpacing
 import net.schedion.app.ui.screens.documents.DocumentDetails
 import net.schedion.app.ui.screens.documents.DocumentsScreen
@@ -55,9 +62,12 @@ import net.schedion.app.ui.screens.news.NewsDetails
 import net.schedion.app.ui.screens.news.NewsScreen
 import net.schedion.app.ui.screens.news.NewsViewModel
 import net.schedion.app.ui.screens.people.FavoritesScreen
+import net.schedion.app.ui.screens.people.FavoritesViewModel
 import net.schedion.app.ui.screens.people.OnboardingScreen
 import net.schedion.app.ui.screens.people.SchedulePickerSheet
 import net.schedion.app.ui.screens.people.SearchScreen
+import net.schedion.app.ui.screens.people.SearchViewModel
+import net.schedion.app.domain.model.FavoriteSource
 import net.schedion.app.ui.screens.schedule.LessonDetails
 import net.schedion.app.ui.screens.schedule.ScheduleScreen
 import net.schedion.app.ui.screens.schedule.ScheduleViewModel
@@ -69,6 +79,8 @@ import net.schedion.app.ui.theme.SchedionType as T
 @Composable
 internal fun AppNavGraph(
     scheduleViewModel: ScheduleViewModel,
+    searchViewModel: SearchViewModel,
+    favoritesViewModel: FavoritesViewModel,
     newsViewModel: NewsViewModel,
     documentsViewModel: DocumentsViewModel,
     filesViewModel: FilesViewModel,
@@ -125,8 +137,32 @@ internal fun AppNavGraph(
     }
     val favoritesLimitMessage = stringResource(R.string.favorites_limit_reached, scheduleViewModel.favoritesLimit)
 
-    LaunchedEffect(scheduleViewModel, favoritesLimitMessage) {
-        scheduleViewModel.favoritesLimitReached.collectLatest {
+    // Предложение добавить выбранный источник в избранное
+    var favoritePrompt by remember { mutableStateOf<FavoriteSource?>(null) }
+    // Последний показанный источник остаётся в разметке, пока проигрывается анимация закрытия
+    var lastFavoritePrompt by remember { mutableStateOf<FavoriteSource?>(null) }
+    LaunchedEffect(scheduleViewModel) {
+        scheduleViewModel.favoritePrompts.collect {
+            favoritePrompt = it
+            lastFavoritePrompt = it
+        }
+    }
+
+    // Диалог живёт на экране ограниченное время и не ждёт действия пользователя
+    LaunchedEffect(favoritePrompt) {
+        if (favoritePrompt != null) {
+            delay(5000)
+            favoritePrompt = null
+        }
+    }
+
+    LaunchedEffect(scheduleViewModel, searchViewModel, favoritesLimitMessage) {
+        launch {
+            scheduleViewModel.favoritesLimitReached.collectLatest {
+                snackbarHostState.showSnackbar(favoritesLimitMessage)
+            }
+        }
+        searchViewModel.favoritesLimitReached.collectLatest {
             snackbarHostState.showSnackbar(favoritesLimitMessage)
         }
     }
@@ -160,8 +196,15 @@ internal fun AppNavGraph(
                         )
                     }
                     Screen.Search -> SearchScreen(
-                        viewModel = scheduleViewModel,
-                        onGroup = openDay,
+                        viewModel = searchViewModel,
+                        onSelectGroup = { group ->
+                            scheduleViewModel.selectGroup(group)
+                            openDay()
+                        },
+                        onSelectTeacher = { teacher ->
+                            scheduleViewModel.selectTeacher(teacher)
+                            openDay()
+                        },
                         isOffline = isOffline,
                     )
                     Screen.News -> NewsScreen(
@@ -178,9 +221,10 @@ internal fun AppNavGraph(
                     // Под шитом всегда показывается расписание (см. visualScreen)
                     Screen.SchedulePicker, Screen.LessonDetails -> Unit
                     Screen.Favorites -> FavoritesScreen(
-                        viewModel = scheduleViewModel,
+                        viewModel = favoritesViewModel,
                         onBack = onBack,
                         onOpenSchedule = openDay,
+                        onOpenFavorite = scheduleViewModel::openFavorite,
                     )
                 }
             }
@@ -207,6 +251,10 @@ internal fun AppNavGraph(
                 onClose = onBack,
                 tall = sheetContent == Screen.SchedulePicker,
                 scrollContent = sheetContent != Screen.SchedulePicker,
+                paneTitleRes = when (sheetContent) {
+                    Screen.SchedulePicker -> R.string.schedule_picker_title
+                    else -> R.string.schedule_lesson_details
+                },
             ) {
                 when (sheetContent) {
                     Screen.SchedulePicker -> SchedulePickerSheet(
@@ -249,6 +297,32 @@ internal fun AppNavGraph(
                 bottom = bottom + D.Sm + if (tab != null) D.NavHeight else D.M,
             ),
         )
+
+        // Диалог-уведомление поверх контента: добавляем выбранный источник в избранное
+        val prompt = favoritePrompt ?: lastFavoritePrompt
+        AnimatedVisibility(
+            visible = favoritePrompt != null,
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(240)) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(180)) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(
+                start = D.Page,
+                end = D.Page,
+                bottom = bottom + D.L + if (tab != null) D.NavHeight else 0.dp,
+            ),
+        ) {
+            if (prompt != null) {
+                SchedionPrompt(
+                    title = stringResource(R.string.favorites_prompt_title),
+                    confirmLabel = stringResource(R.string.favorites_prompt_add),
+                    dismissLabel = stringResource(R.string.favorites_prompt_later),
+                    onConfirm = {
+                        scheduleViewModel.addFavorite(prompt)
+                        favoritePrompt = null
+                    },
+                    onDismiss = { favoritePrompt = null },
+                )
+            }
+        }
     }
 }
 

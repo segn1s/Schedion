@@ -44,13 +44,15 @@ internal fun NewsScreen(
                 }
         }
     }
-    PullToRefreshBox(isRefreshing = feed.content.isRefreshing, onRefresh = viewModel::refresh, modifier = modifier.fillMaxSize()) {
+    // Индикатор обновления держится не меньше трёх секунд, как и на расписании
+    val refresh = rememberRefreshHandle { viewModel.refresh() }
+    PullToRefreshBox(isRefreshing = refresh.holding || feed.content.isRefreshing, onRefresh = refresh.onRefresh, modifier = modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(start = D.Page, end = D.Page, top = topSpacing()), verticalArrangement = Arrangement.spacedBy(D.L)) {
             Text(stringResource(R.string.news_title), style = T.Heading)
-            if (isOffline) OfflineBanner(feed.content.savedAt)
+            if (isOffline) OfflineBanner(feed.content.savedAt, onRefresh = refresh.onRefresh)
             UiStateContent(
                 state = feed.content,
-                onRetry = viewModel::refresh,
+                onRetry = refresh.onRefresh,
                 modifier = Modifier.weight(1f),
                 scrollFallback = true,
                 showOfflineBanner = false,
@@ -59,7 +61,7 @@ internal fun NewsScreen(
             ) { page ->
                 LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(D.Ml), contentPadding = PaddingValues(bottom = bottom)) {
                     itemsIndexed(page.items, key = { _, item -> item.slug }) { index, news ->
-                        MockCard(large = index == 0, onClick = { onOpenArticle(news.slug) }) {
+                        SchedionCard(large = index == 0, onClick = { onOpenArticle(news.slug) }) {
                             if (index == 0) {
                                 news.coverUrl?.let { url ->
                                     RemoteImage(
@@ -95,10 +97,10 @@ internal fun NewsScreen(
                     }
                     if (feed.isLoadingMore) item { ContentSkeleton() }
                     else if (feed.pageError != null) item {
-                        MockButton(stringResource(R.string.news_retry_page), Modifier.fillMaxWidth(), onClick = { viewModel.loadMore(retry = true) })
+                        SchedionButton(stringResource(R.string.news_retry_page), Modifier.fillMaxWidth(), onClick = { viewModel.loadMore(retry = true) })
                     }
                     else if (feed.hasMore) item {
-                        MockButton(stringResource(R.string.news_load_more), Modifier.fillMaxWidth(), onClick = { viewModel.loadMore() })
+                        SchedionButton(stringResource(R.string.news_load_more), Modifier.fillMaxWidth(), onClick = { viewModel.loadMore() })
                     }
                 }
             }

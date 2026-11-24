@@ -62,6 +62,9 @@ internal object SchedionDimens {
     val FavoritesReorderHandle = 48.dp
     val FavoritesDragEdge = 56.dp
     val FavoritesDragScrollStep = 14.dp
+    val SearchDirectoryRow = 55.dp
+    val WeekPairColumn = 26.dp
+    val WeekTimeColumn = 62.dp
     val Snackbar = 58.dp
     val TeacherPrompt = 72.dp
     val Toolbar = 39.dp
