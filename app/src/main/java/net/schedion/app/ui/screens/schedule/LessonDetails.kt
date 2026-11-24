@@ -12,7 +12,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import net.schedion.app.R
 import net.schedion.app.domain.model.LessonItem
 import net.schedion.app.domain.model.LessonStatus
 import net.schedion.app.ui.components.Chip
@@ -29,40 +31,46 @@ internal fun LessonDetails(
     onTeacher: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val discipline = lesson?.discipline ?: "Занятие"
-    val kind = lesson?.kind?.ifEmpty { "Занятие" } ?: "Занятие"
+    val discipline = lesson?.discipline ?: stringResource(R.string.schedule_lesson)
+    val kind = lesson?.kind?.ifEmpty { stringResource(R.string.schedule_lesson) } ?: stringResource(R.string.schedule_lesson)
     val isCurrent = lesson?.status == LessonStatus.Current
     val isCancelled = lesson?.status == LessonStatus.Cancelled
     val teachers = lesson?.teachers
 
     Column(modifier.fillMaxWidth().padding(horizontal = D.Page, vertical = D.Sm)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(D.Sm)) {
-            if (isCurrent) Chip("Идёт сейчас", C.Today, C.Text)
-            if (isCancelled) Chip("Отменена", C.RedTint, C.Red)
+            if (isCurrent) Chip(stringResource(R.string.schedule_status_current), C.Today, C.Text)
+            if (isCancelled) Chip(stringResource(R.string.schedule_status_cancelled), C.RedTint, C.Red)
             Text(kind, color = C.Secondary, style = T.Label)
         }
         Spacer(Modifier.height(D.Sm))
         Text(discipline, style = T.SheetHeading)
         Spacer(Modifier.height(D.Page))
         Column(verticalArrangement = Arrangement.spacedBy(D.Ml)) {
-            DetailRow("Когда") {
+            DetailRow(stringResource(R.string.schedule_when)) {
                 Text(
-                    "${lesson?.date ?: ""} · ${lesson?.pairNumber ?: 1} пара, ${lesson?.timeStart ?: ""} – ${lesson?.timeEnd ?: ""}",
+                    stringResource(
+                        R.string.schedule_lesson_datetime,
+                        lesson?.date.orEmpty(),
+                        lesson?.pairNumber ?: 1,
+                        lesson?.timeStart.orEmpty(),
+                        lesson?.timeEnd.orEmpty(),
+                    ),
                     style = T.Body,
                 )
             }
             lesson?.room?.let { room ->
-                DetailRow("Аудитория") { Text(room, style = T.Body) }
+                DetailRow(stringResource(R.string.schedule_room)) { Text(room, style = T.Body) }
             }
             lesson?.groupName?.let { group ->
-                DetailRow("Группа") { Text(group, style = T.Body) }
+                DetailRow(stringResource(R.string.common_group)) { Text(group, style = T.Body) }
             }
             lesson?.subgroup?.let { subgroup ->
-                DetailRow("Подгруппа") { Text("$subgroup", style = T.Body) }
+                DetailRow(stringResource(R.string.schedule_subgroup)) { Text(subgroup.toString(), style = T.Body) }
             }
             val teachers = lesson?.teachers
             if (!teachers.isNullOrEmpty()) {
-                DetailRow("Преподаватель") {
+                DetailRow(stringResource(R.string.common_teacher)) {
                     Text(
                         teachers,
                         Modifier.clickable(role = Role.Button, onClick = onTeacher),
@@ -74,10 +82,10 @@ internal fun LessonDetails(
         }
         Spacer(Modifier.height(D.Page + D.Tiny))
         if (!teachers.isNullOrEmpty()) {
-            MockButton("Расписание преподавателя", Modifier.fillMaxWidth(), primary = true, onClick = onTeacher)
+            MockButton(stringResource(R.string.schedule_teacher), Modifier.fillMaxWidth(), primary = true, onClick = onTeacher)
             Spacer(Modifier.height(D.Sm))
         }
-        MockButton("Закрыть", Modifier.fillMaxWidth(), onClick = onClose)
+        MockButton(stringResource(R.string.common_close), Modifier.fillMaxWidth(), onClick = onClose)
     }
 }
 

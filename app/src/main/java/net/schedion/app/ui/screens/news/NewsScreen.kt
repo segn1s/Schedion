@@ -17,8 +17,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import net.schedion.app.R
 import net.schedion.app.core.Resource
 import net.schedion.app.ui.components.BackBar
 import net.schedion.app.ui.components.Glyph
@@ -45,7 +47,7 @@ internal fun NewsScreen(
     val state by viewModel.newsFeed.collectAsState()
 
     ScreenColumn(modifier) {
-        Text("Новости", style = T.Heading)
+        Text(stringResource(R.string.news_title), style = T.Heading)
         Spacer(Modifier.height(D.L))
 
         when (val res = state) {
@@ -62,9 +64,9 @@ internal fun NewsScreen(
             is Resource.Error -> {
                 MockCard(outline = C.RedOutline) {
                     Column(Modifier.padding(D.Page), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Не удалось загрузить новости", color = C.Red, style = T.Title)
+                        Text(stringResource(R.string.state_news_load_error), color = C.Red, style = T.Title)
                         Spacer(Modifier.height(D.M))
-                        MockButton("Повторить", compact = true, onClick = { viewModel.loadNews() })
+                        MockButton(stringResource(R.string.common_retry), compact = true, onClick = { viewModel.loadNews() })
                     }
                 }
             }
@@ -105,7 +107,7 @@ internal fun NewsScreen(
                         }
                     }
                 } else {
-                    Text("В ленте пока нет новостей", color = C.Muted, style = T.Body)
+                    Text(stringResource(R.string.state_news_empty), color = C.Muted, style = T.Body)
                 }
             }
         }
@@ -117,29 +119,29 @@ internal fun NewsDetails(onBack: () -> Unit, modifier: Modifier = Modifier) {
     Box(modifier) {
         Box(Modifier.fillMaxWidth().height(topSpacing() + D.Toolbar).background(C.Sheet))
         ScreenColumn(withTabs = false) {
-            BackBar("Новости", onBack) { LineIcon(Glyph.Share, tint = C.Primary, size = D.NavIcon) }
+            BackBar(stringResource(R.string.news_title), onBack) { LineIcon(Glyph.Share, tint = C.Primary, size = D.NavIcon) }
             Spacer(Modifier.height(D.Sm))
             NewsCover(D.ArticleCover)
             Spacer(Modifier.height(D.L))
-            Text("09.11.2026", color = C.Muted, style = T.Label)
+            Text(stringResource(R.string.news_sample_date), color = C.Muted, style = T.Label)
             Spacer(Modifier.height(D.L))
-            Text("Расписание на время зимней сессии", style = T.Heading)
+            Text(stringResource(R.string.news_sample_title), style = T.Heading)
             Spacer(Modifier.height(D.L))
-            Text("Консультации и экзамены появятся в приложении после утверждения графика.", style = T.Lead)
+            Text(stringResource(R.string.news_sample_summary), style = T.Lead)
             Spacer(Modifier.height(D.L))
             Text(
-                "Текст новости приходит из официального API Schedion. Подзаголовки, абзацы, фото и документы выводятся блоками, как на сайте.",
+                stringResource(R.string.news_sample_body),
                 color = C.Secondary, style = T.ArticleBody,
             )
             Spacer(Modifier.height(D.Xl))
-            Text("График сессии", style = T.ArticleHeading)
+            Text(stringResource(R.string.news_sample_section), style = T.ArticleHeading)
             Spacer(Modifier.height(D.L))
             MockCard {
-                DocumentRow(Document("График сессии, 2 курс", "Документ PDF · 210 КБ", FileType.Pdf), attachment = true)
+                DocumentRow(Document(R.string.news_sample_attachment_title, R.string.news_sample_attachment_meta, FileType.Pdf), attachment = true)
             }
             Spacer(Modifier.height(D.Ml))
             Row(horizontalArrangement = Arrangement.spacedBy(D.Sm), verticalAlignment = Alignment.CenterVertically) {
-                Text("Пост в канале института в MAX", color = C.Primary, style = T.BodyStrong)
+                Text(stringResource(R.string.news_sample_external_link), color = C.Primary, style = T.BodyStrong)
                 LineIcon(Glyph.External, tint = C.Primary, size = D.IconSmall)
             }
         }
@@ -152,6 +154,6 @@ private fun NewsCover(height: Dp, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth().height(height).background(C.Cover, RoundedCornerShape(D.CardRadius)),
         contentAlignment = Alignment.Center,
     ) {
-        Text("Обложка", color = C.Primary, style = T.LabelStrong)
+        Text(stringResource(R.string.news_cover_placeholder), color = C.Primary, style = T.LabelStrong)
     }
 }
