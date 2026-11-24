@@ -16,7 +16,7 @@ import net.schedion.app.data.local.entity.WeekEntity
 /** Локальная база данных приложения — офлайн-кэш расписания, звонков, недель и избранного. */
 @Database(
     entities = [LessonEntity::class, PairEntity::class, WeekEntity::class, FavoriteEntity::class],
-    version = 2,
+    version = 3,
 )
 abstract class SchedionDatabase : RoomDatabase() {
 
@@ -45,6 +45,14 @@ abstract class SchedionDatabase : RoomDatabase() {
                     "CREATE UNIQUE INDEX IF NOT EXISTS `index_favorites_kind_sourceId` " +
                         "ON `favorites` (`kind`, `sourceId`)",
                 )
+            }
+        }
+
+        /** Сохраняет порядок добавления уже существующих источников избранного. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `favorites` ADD COLUMN `position` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE `favorites` SET `position` = `id`")
             }
         }
     }
