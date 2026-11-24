@@ -85,13 +85,18 @@ class ScheduleRepositoryTest {
     private class FakeApiService(
         var shouldFail: Boolean = false,
         var filters: ScheduleFiltersDto = ScheduleFiltersDto(emptyList(), emptyList(), emptyList()),
+        var otherWeekFilters: Map<String, ScheduleFiltersDto> = emptyMap(),
     ) : SchedionApiService {
+        var lastScheduleWasUnfiltered = false
+            private set
+
         override suspend fun getSchedule(
             week: String?,
             group: Int?,
             course: Int?,
             teacher: Int?,
         ): ScheduleWeekDto {
+            lastScheduleWasUnfiltered = week == null && group == null && course == null && teacher == null
             if (shouldFail) throw IOException("Network error")
             return ScheduleWeekDto(
                 weekStart = "2026-11-09",
@@ -108,7 +113,7 @@ class ScheduleRepositoryTest {
                     ),
                 ),
                 cancellations = emptyList(),
-                filters = filters,
+                filters = otherWeekFilters[week] ?: filters,
             )
         }
 
@@ -118,9 +123,8 @@ class ScheduleRepositoryTest {
                 semester = SemesterDto("2026-09-01", "2027-01-25", "1 семестр"),
                 currentWeekStart = "2026-11-09",
                 defaultWeekStart = "2026-11-09",
-                items = listOf(
-                    WeekItemDto("2026-11-09", "2026-11-15", 10, WeekColor.BLACK),
-                ),
+                items = listOf(WeekItemDto("2026-11-09", "2026-11-15", 10, WeekColor.BLACK)) +
+                    otherWeekFilters.keys.map { week -> WeekItemDto(week, week, 9, WeekColor.BLACK) },
             )
         }
 
@@ -225,6 +229,74 @@ class ScheduleRepositoryTest {
         api.shouldFail = true
         repository.getSchedule(week = week, group = 1).toList()
         assertEquals(fresh.savedAt, repository.teachersSavedAt.value)
+    }
+
+    @Test
+    fun getDirectories_afterNetworkError_refreshesBothListsWithoutScheduleFilters() = runBlocking {
+        val groups = listOf(GroupDto(id = 1, name = "1ИВТ", course = 1))
+        val teachers = listOf(TeacherDto(id = 2, shortName = "Иванов И. И."))
+        val api = FakeApiService(shouldFail = true)
+        val repository = ScheduleRepositoryImpl(api, FakeLessonDao(), FakePairDao(), FakeWeekDao(),
+            CachedContent(InMemoryContentCacheDao(), SchedionJson))
+
+        val offline = repository.getDirectories().toList()
+        assertTrue(offline.first() is Resource.Loading)
+        assertTrue((offline.last() as Resource.Error).cause is IOException)
+
+        api.shouldFail = false
+        api.filters = ScheduleFiltersDto(groups, teachers, emptyList())
+        val fresh = repository.getDirectories().toList().last() as Resource.Success
+
+        assertTrue(api.lastScheduleWasUnfiltered)
+        assertFalse(fresh.isFromCache)
+        assertEquals(groups, repository.availableGroups.value)
+        assertEquals(teachers, repository.availableTeachers.value)
+    }
+
+    @Test
+    fun getDirectories_offline_restoresListsWithoutOpeningTheirSchedule() = runBlocking {
+        val groups = listOf(GroupDto(id = 1, name = "1ИВТ", course = 1))
+        val teachers = listOf(TeacherDto(id = 2, shortName = "Иванов И. И."))
+        val api = FakeApiService(filters = ScheduleFiltersDto(groups, teachers, emptyList()))
+        val cache = CachedContent(InMemoryContentCacheDao(), SchedionJson)
+        val onlineRepository = ScheduleRepositoryImpl(api, FakeLessonDao(), FakePairDao(), FakeWeekDao(), cache)
+        val fresh = onlineRepository.getDirectories().toList().last() as Resource.Success
+
+        api.shouldFail = true
+        val offlineRepository = ScheduleRepositoryImpl(api, FakeLessonDao(), FakePairDao(), FakeWeekDao(), cache)
+        val offline = offlineRepository.getDirectories().toList()
+
+        val cached = offline[1] as Resource.Success
+        assertTrue(cached.isFromCache)
+        assertEquals(groups, offlineRepository.availableGroups.value)
+        assertEquals(teachers, offlineRepository.availableTeachers.value)
+        assertEquals(fresh.savedAt, offlineRepository.groupsSavedAt.value)
+        assertEquals(fresh.savedAt, offlineRepository.teachersSavedAt.value)
+        assertTrue((offline.last() as Resource.Error).cause is IOException)
+    }
+
+    @Test
+    fun getDirectories_combinesSupportForOtherWeeksAndRefreshesThemOnDemand() = runBlocking {
+        val group = GroupDto(id = 1, name = "1ИВТ", course = 1)
+        val currentTeacher = TeacherDto(id = 2, shortName = "Иванов И. И.")
+        val earlierTeacher = TeacherDto(id = 3, shortName = "Петров П. П.")
+        val earlierWeek = "2026-11-02"
+        val current = ScheduleFiltersDto(listOf(group), listOf(currentTeacher), listOf(1))
+        val earlier = ScheduleFiltersDto(emptyList(), listOf(earlierTeacher), emptyList())
+        val api = FakeApiService(filters = current, otherWeekFilters = mapOf(earlierWeek to earlier))
+        val repository = ScheduleRepositoryImpl(api, FakeLessonDao(), FakePairDao(), FakeWeekDao(),
+            CachedContent(InMemoryContentCacheDao(), SchedionJson))
+
+        val first = repository.getDirectories().toList().last() as Resource.Success
+        assertEquals(listOf(currentTeacher, earlierTeacher), first.data.teachers)
+
+        val updatedEarlier = earlier.copy(teachers = listOf(earlierTeacher.copy(shortName = "Сидоров С. С.")))
+        api.otherWeekFilters = mapOf(earlierWeek to updatedEarlier)
+        val automatic = repository.getDirectories().toList().last() as Resource.Success
+        assertEquals(first.data, automatic.data)
+
+        val manual = repository.getDirectories(refreshAllWeeks = true).toList().last() as Resource.Success
+        assertEquals(listOf(currentTeacher, updatedEarlier.teachers.single()), manual.data.teachers)
     }
 
     @Test

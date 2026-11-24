@@ -77,13 +77,20 @@ internal fun AppNavGraph(
 ) {
     val networkStatus by networkStatusViewModel.status.collectAsState()
     val isOffline = networkStatus == NetworkStatus.Offline
-    LaunchedEffect(networkStatusViewModel) {
+    LaunchedEffect(networkStatusViewModel, scheduleViewModel) {
+        var previousStatus = NetworkStatus.Checking
         networkStatusViewModel.status.collect { status ->
             if (status == NetworkStatus.Online) {
+                if (previousStatus == NetworkStatus.Interrupted || previousStatus == NetworkStatus.Offline ||
+                    scheduleViewModel.directoryState.value.isOffline
+                ) {
+                    scheduleViewModel.refreshDirectories(refreshAllWeeks = false)
+                }
                 if (scheduleViewModel.contentState.value.isOffline) scheduleViewModel.refreshSchedule()
                 newsViewModel.retryNetworkErrors()
                 documentsViewModel.retryNetworkErrors()
             }
+            previousStatus = status
         }
     }
 
@@ -199,6 +206,7 @@ internal fun AppNavGraph(
                 visibleState = sheetVisible,
                 onClose = onBack,
                 tall = sheetContent == Screen.SchedulePicker,
+                scrollContent = sheetContent != Screen.SchedulePicker,
             ) {
                 when (sheetContent) {
                     Screen.SchedulePicker -> SchedulePickerSheet(

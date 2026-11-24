@@ -55,6 +55,7 @@
     <string name="search_clear">Очистить поиск</string>
     <string name="search_groups">Группы</string>
     <string name="search_groups_count">Группы (%1$d)</string>
+    <string name="search_directory_loading">Загружаем группы и преподавателей…</string>
     <string name="search_groups_empty">Группы не найдены</string>
     <string name="search_hint">Поиск…</string>
     <string name="search_onboarding_description">Расписание пар, звонки и новости института.\nРаботает с официальным сервером Schedion.</string>

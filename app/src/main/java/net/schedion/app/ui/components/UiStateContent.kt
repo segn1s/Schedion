@@ -23,7 +23,7 @@ import net.schedion.app.ui.theme.SchedionType as T
 @Composable
 internal fun <T> UiStateContent(
     state: ContentState<T>,
-    onRetry: () -> Unit,
+    onRetry: (() -> Unit)?,
     modifier: Modifier = Modifier,
     scrollFallback: Boolean = false,
     showOfflineBanner: Boolean = true,
@@ -49,7 +49,9 @@ internal fun <T> UiStateContent(
             state.resource is Resource.Error -> {
                 if (state.isOffline && !showOfflineBanner) {
                     Text(stringResource(R.string.state_load_error), style = T.Title)
-                    MockButton(stringResource(R.string.common_retry), compact = true, onClick = onRetry)
+                    if (onRetry != null) {
+                        MockButton(stringResource(R.string.common_retry), compact = true, onClick = onRetry)
+                    }
                 } else ContentError(state, onRetry)
             }
             else -> loading()
@@ -58,7 +60,7 @@ internal fun <T> UiStateContent(
 }
 
 @Composable
-private fun <T> ContentError(state: ContentState<T>, onRetry: () -> Unit, compact: Boolean = false) {
+private fun <T> ContentError(state: ContentState<T>, onRetry: (() -> Unit)?, compact: Boolean = false) {
     MockCard(outline = if (state.isOffline) C.GoldOutline else C.RedOutline) {
         Column(Modifier.padding(D.Page), verticalArrangement = Arrangement.spacedBy(D.Sm)) {
             Text(stringResource(if (state.isOffline) R.string.state_offline else R.string.state_load_error), style = T.Title)
@@ -71,7 +73,9 @@ private fun <T> ContentError(state: ContentState<T>, onRetry: () -> Unit, compac
                     else -> stringResource(R.string.state_server_error)
                 }, color = C.Secondary, style = T.Body,
             )
-            MockButton(stringResource(if (compact) R.string.common_refresh else R.string.common_retry), compact = true, onClick = onRetry)
+            if (onRetry != null) {
+                MockButton(stringResource(if (compact) R.string.common_refresh else R.string.common_retry), compact = true, onClick = onRetry)
+            }
         }
     }
 }
