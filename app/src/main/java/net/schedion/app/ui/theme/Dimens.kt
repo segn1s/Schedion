@@ -42,9 +42,10 @@ internal object SchedionDimens {
     val SearchField = 50.dp
     val SheetSearchField = 45.dp
     val SearchRow = 60.dp
-    val NewsCover = 170.dp
+    val NewsCover = 200.dp
+    val NewsCoverVerticalBias = -0.65f
     val ArticleCover = 200.dp
-    val NewsThumb = 76.dp
+    val NewsThumb = 84.dp
     val DocumentRow = 81.dp
     val FileWidth = 36.dp
     val FileHeight = 44.dp

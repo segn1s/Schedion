@@ -42,6 +42,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import net.schedion.app.R
+import net.schedion.app.ui.components.UiStateContent
+import net.schedion.app.ui.components.EmptyContent
 import net.schedion.app.core.Resource
 import net.schedion.app.domain.model.LessonItem
 import net.schedion.app.domain.model.LessonStatus
@@ -53,6 +55,7 @@ import net.schedion.app.ui.components.LineIcon
 import net.schedion.app.ui.components.MockButton
 import net.schedion.app.ui.components.MockCard
 import net.schedion.app.ui.components.MockDivider
+import net.schedion.app.ui.components.OfflineBanner
 import net.schedion.app.ui.components.ScheduleSkeleton
 import net.schedion.app.ui.components.ScreenColumn
 import net.schedion.app.ui.components.Segments
@@ -66,9 +69,10 @@ internal fun ScheduleScreen(
     viewModel: ScheduleViewModel,
     onChoose: () -> Unit,
     onLessonDetails: (LessonItem) -> Unit,
+    isOffline: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val state by viewModel.scheduleState.collectAsState()
+    val state by viewModel.contentState.collectAsState()
     val selectedDayIdx by viewModel.selectedDayIndex.collectAsState()
     val weekly by viewModel.isWeeklyMode.collectAsState()
     val selectedGroup by viewModel.selectedGroup.collectAsState()
@@ -79,9 +83,6 @@ internal fun ScheduleScreen(
     val titleText = selectedTeacher?.shortName ?: selectedGroup?.name ?: stringResource(R.string.schedule_title)
     val subtitleText = if (isTeacher) stringResource(R.string.schedule_teacher) else stringResource(R.string.schedule_group)
 
-    val isOffline = (state as? Resource.Success)?.data?.isFromCache == true
-    val cachedTime = (state as? Resource.Success)?.data?.cachedTimestamp ?: stringResource(R.string.state_cached_recently)
-
     // Обновление жестом «потянуть вниз», как в браузере
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -89,18 +90,6 @@ internal fun ScheduleScreen(
         modifier = modifier.fillMaxSize(),
     ) {
         ScreenColumn(Modifier.animateContentSize(animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing))) {
-            // Офлайн-баннер появляется только при реальном fallback на кэш
-            AnimatedVisibility(
-                visible = isOffline,
-                enter = expandVertically(animationSpec = tween(240)) + fadeIn(animationSpec = tween(200)),
-                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(160)),
-            ) {
-                Column {
-                    OfflineBanner(timestamp = cachedTime, onRefresh = { viewModel.refreshSchedule() })
-                    Spacer(Modifier.height(D.L))
-                }
-            }
-
             // Шапка расписания с реальным выбранным источником
             ScheduleHeader(
                 title = titleText,
@@ -114,40 +103,28 @@ internal fun ScheduleScreen(
 
             Spacer(Modifier.height(D.L))
 
-            // Отображение состояния загрузки, ошибки или расписания
-            when (val resource = state) {
-                is Resource.Loading -> {
-                    ScheduleSkeleton()
-                }
-                is Resource.Error -> {
-                    ErrorCard(
-                        message = resource.message,
-                        onRetry = { viewModel.refreshSchedule() },
-                    )
-                }
-                is Resource.Success -> {
-                    val schedule = resource.data
+            if (isOffline) {
+                OfflineBanner(state.savedAt)
+                Spacer(Modifier.height(D.L))
+            }
+
+            UiStateContent(
+                state = state,
+                onRetry = viewModel::refreshSchedule,
+                showOfflineBanner = false,
+                loading = { ScheduleSkeleton() },
+            ) { schedule ->
+                if (selectedGroup == null && selectedTeacher == null) {
+                    EmptyContent(R.string.state_no_source)
+                    MockButton(stringResource(R.string.schedule_choose_source), onClick = onChoose)
+                } else {
                     AnimatedContent(
                         targetState = weekly,
-                        transitionSpec = {
-                            fadeIn(animationSpec = tween(220, easing = FastOutSlowInEasing)) togetherWith
-                                fadeOut(animationSpec = tween(160, easing = FastOutSlowInEasing))
-                        },
+                        transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) },
                         label = "schedule_view_mode",
                     ) { isWeeklyView ->
-                        if (isWeeklyView) {
-                            WeeklySchedule(
-                                days = schedule.days,
-                                onLessonDetails = onLessonDetails,
-                            )
-                        } else {
-                            DailyScheduleView(
-                                schedule = schedule,
-                                selectedDayIndex = selectedDayIdx,
-                                onSelectDay = { viewModel.selectDay(it) },
-                                onLessonDetails = onLessonDetails,
-                            )
-                        }
+                        if (isWeeklyView) WeeklySchedule(schedule.days, onLessonDetails)
+                        else DailyScheduleView(schedule, selectedDayIdx, viewModel::selectDay, onLessonDetails)
                     }
                 }
             }
@@ -448,27 +425,6 @@ private fun ScheduleHeader(
 }
 
 @Composable
-private fun OfflineBanner(timestamp: String, onRefresh: () -> Unit) {
-    MockCard(outline = C.GoldPale) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = D.OfflineCard)
-                .padding(horizontal = D.L, vertical = D.Sm),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(D.S),
-        ) {
-            StatusDot(C.Today)
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.state_offline), color = C.AmberText, style = T.BodyStrong)
-                Text(stringResource(R.string.state_cached_schedule, timestamp), color = C.Secondary, style = T.Label)
-            }
-            MockButton(stringResource(R.string.common_refresh), compact = true, onClick = onRefresh)
-        }
-    }
-}
-
-@Composable
 private fun EmptyDay(title: String, subtitle: String) {
     MockCard(color = C.Past) {
         Column(
@@ -484,24 +440,6 @@ private fun EmptyDay(title: String, subtitle: String) {
             Text(title, style = T.Lead, textAlign = TextAlign.Center)
             Spacer(Modifier.height(D.Xs))
             Text(subtitle, color = C.Secondary, style = T.Body, textAlign = TextAlign.Center)
-        }
-    }
-}
-
-@Composable
-private fun ErrorCard(message: String, onRetry: () -> Unit) {
-    MockCard(outline = C.RedOutline) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(D.Page),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(stringResource(R.string.state_load_error), color = C.Red, style = T.Title)
-            Spacer(Modifier.height(D.Xs))
-            Text(message, color = C.Secondary, style = T.Body, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(D.M))
-            MockButton(stringResource(R.string.common_retry), primary = true, compact = true, onClick = onRetry)
         }
     }
 }

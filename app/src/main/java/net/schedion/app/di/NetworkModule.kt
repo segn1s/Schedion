@@ -7,6 +7,8 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
 import net.schedion.app.data.remote.SCHEDION_BASE_URL
+import net.schedion.app.data.remote.AndroidNetworkMonitor
+import net.schedion.app.data.remote.NetworkMonitor
 import net.schedion.app.data.remote.SchedionApiService
 import net.schedion.app.data.remote.SchedionJson
 import okhttp3.MediaType.Companion.toMediaType
@@ -19,6 +21,10 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
+
+    @Provides
+    @Singleton
+    fun provideNetworkMonitor(monitor: AndroidNetworkMonitor): NetworkMonitor = monitor
 
     @Provides
     @Singleton
